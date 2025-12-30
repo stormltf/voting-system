@@ -19,7 +19,8 @@ const corsOptions = {
     const allowedOrigins = [
       'http://localhost:3000',
       'http://localhost:8080',
-      process.env.FRONTEND_URL,  // 生产环境前端 URL
+      'https://voting-frontend-n2p2.onrender.com',  // Render 前端
+      process.env.FRONTEND_URL,  // 自定义前端 URL
     ].filter(Boolean);
 
     // 允许无 origin 的请求（如 Postman、curl）
