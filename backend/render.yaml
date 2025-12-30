@@ -1,0 +1,27 @@
+# Render Blueprint - 后端部署配置
+# 参考：https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: voting-system-api
+    env: node
+    region: singapore  # 可选：oregon, frankfurt, singapore
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: DB_HOST
+        sync: false  # 需要手动配置
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_NAME
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true  # 自动生成
