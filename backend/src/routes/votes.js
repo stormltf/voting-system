@@ -1,9 +1,12 @@
 const express = require('express');
+const multer = require('multer');
+const XLSX = require('xlsx');
 const { pool } = require('../models/db');
 const { authMiddleware } = require('../middleware/auth');
 const { createLogger, Actions, Modules } = require('../utils/logger');
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
 // ===== 投票轮次管理 =====
 
@@ -316,6 +319,197 @@ router.put('/batch', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('批量更新投票状态错误:', error);
     res.status(500).json({ error: '服务器错误' });
+  }
+});
+
+// ===== 初始化和导入 =====
+
+// 一键初始化投票记录（为所有业主创建待投票记录）
+router.post('/init', authMiddleware, async (req, res) => {
+  try {
+    const { round_id, community_id } = req.body;
+
+    if (!round_id || !community_id) {
+      return res.status(400).json({ error: '请选择投票轮次和小区' });
+    }
+
+    // 获取该小区所有业主
+    const [owners] = await pool.query(`
+      SELECT o.id FROM owners o
+      JOIN phases p ON o.phase_id = p.id
+      WHERE p.community_id = ?
+    `, [community_id]);
+
+    if (owners.length === 0) {
+      return res.status(400).json({ error: '该小区没有业主数据' });
+    }
+
+    // 批量插入投票记录（忽略已存在的）
+    let insertCount = 0;
+    for (const owner of owners) {
+      const [result] = await pool.query(`
+        INSERT IGNORE INTO votes (owner_id, round_id, vote_status)
+        VALUES (?, ?, 'pending')
+      `, [owner.id, round_id]);
+      if (result.affectedRows > 0) {
+        insertCount++;
+      }
+    }
+
+    // 记录日志
+    const log = createLogger(req);
+    await log(Actions.CREATE, Modules.VOTE, {
+      targetType: 'vote',
+      details: `初始化投票记录: 轮次ID ${round_id}, 创建 ${insertCount} 条记录`,
+    });
+
+    res.json({
+      message: `成功初始化 ${insertCount} 条投票记录`,
+      total: owners.length,
+      created: insertCount,
+      skipped: owners.length - insertCount,
+    });
+  } catch (error) {
+    console.error('初始化投票记录错误:', error);
+    res.status(500).json({ error: '服务器错误' });
+  }
+});
+
+// Excel 批量导入投票状态
+router.post('/import', authMiddleware, upload.single('file'), async (req, res) => {
+  try {
+    const { round_id, community_id, vote_column } = req.body;
+
+    if (!req.file) {
+      return res.status(400).json({ error: '请上传文件' });
+    }
+
+    if (!round_id || !community_id) {
+      return res.status(400).json({ error: '请选择投票轮次和小区' });
+    }
+
+    // 解析 Excel
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+    if (data.length < 2) {
+      return res.status(400).json({ error: 'Excel 文件为空或格式错误' });
+    }
+
+    const headers = data[0];
+
+    // 查找房间号列（支持多种列名）
+    const roomColIndex = headers.findIndex(h =>
+      h && (h.includes('房间') || h.includes('房号') || h === '房间号')
+    );
+    if (roomColIndex === -1) {
+      return res.status(400).json({ error: '找不到房间号列' });
+    }
+
+    // 查找投票状态列（如 "25B投否"）
+    let voteColIndex = -1;
+    if (vote_column) {
+      voteColIndex = headers.findIndex(h => h && h.includes(vote_column));
+    }
+    if (voteColIndex === -1) {
+      // 尝试自动查找包含"投否"的列
+      voteColIndex = headers.findIndex(h => h && h.includes('投否'));
+    }
+    if (voteColIndex === -1) {
+      return res.status(400).json({ error: '找不到投票状态列，请指定 vote_column 参数' });
+    }
+
+    // 查找备注列
+    const remarkColIndex = headers.findIndex(h => h && h.includes('备注'));
+
+    // 查找扫楼情况列
+    const sweepColIndex = headers.findIndex(h => h && h.includes('扫楼'));
+
+    // 获取该小区所有业主（用于匹配房间号）
+    const [owners] = await pool.query(`
+      SELECT o.id, o.room_number FROM owners o
+      JOIN phases p ON o.phase_id = p.id
+      WHERE p.community_id = ?
+    `, [community_id]);
+
+    // 创建房间号到业主ID的映射
+    const roomToOwnerId = {};
+    for (const owner of owners) {
+      // 标准化房间号（去除空格和特殊字符）
+      const normalizedRoom = owner.room_number.replace(/[\s-]/g, '');
+      roomToOwnerId[normalizedRoom] = owner.id;
+      roomToOwnerId[owner.room_number] = owner.id;
+    }
+
+    // 处理数据
+    let successCount = 0;
+    let skipCount = 0;
+    let notFoundCount = 0;
+    const notFoundRooms = [];
+
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (!row || !row[roomColIndex]) continue;
+
+      const roomNumber = String(row[roomColIndex]).trim();
+      const voteValue = row[voteColIndex];
+      const remark = remarkColIndex >= 0 ? row[remarkColIndex] : null;
+      const sweepStatus = sweepColIndex >= 0 ? row[sweepColIndex] : null;
+
+      // 标准化房间号进行匹配
+      const normalizedRoom = roomNumber.replace(/[\s-]/g, '');
+      const ownerId = roomToOwnerId[normalizedRoom] || roomToOwnerId[roomNumber];
+
+      if (!ownerId) {
+        notFoundCount++;
+        if (notFoundRooms.length < 10) {
+          notFoundRooms.push(roomNumber);
+        }
+        continue;
+      }
+
+      // 判断投票状态：值为 1 表示已投票
+      const voteStatus = (voteValue === 1 || voteValue === '1' || voteValue === '是') ? 'voted' : 'pending';
+
+      // 如果是待投票且没有备注/扫楼信息，跳过
+      if (voteStatus === 'pending' && !remark && !sweepStatus) {
+        skipCount++;
+        continue;
+      }
+
+      // 插入或更新投票记录
+      await pool.query(`
+        INSERT INTO votes (owner_id, round_id, vote_status, remark, sweep_status)
+        VALUES (?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          vote_status = VALUES(vote_status),
+          remark = COALESCE(VALUES(remark), remark),
+          sweep_status = COALESCE(VALUES(sweep_status), sweep_status)
+      `, [ownerId, round_id, voteStatus, remark || null, sweepStatus || null]);
+
+      successCount++;
+    }
+
+    // 记录日志
+    const log = createLogger(req);
+    await log(Actions.IMPORT, Modules.VOTE, {
+      targetType: 'vote',
+      details: `导入投票记录: 成功 ${successCount}, 跳过 ${skipCount}, 未找到 ${notFoundCount}`,
+    });
+
+    res.json({
+      message: `导入完成`,
+      success: successCount,
+      skipped: skipCount,
+      notFound: notFoundCount,
+      notFoundRooms: notFoundRooms,
+      voteColumn: headers[voteColIndex],
+    });
+  } catch (error) {
+    console.error('导入投票记录错误:', error);
+    res.status(500).json({ error: '服务器错误: ' + error.message });
   }
 });
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Edit, Trash2, X, Search, Vote, Calendar, Loader2, CheckCircle2, Users } from 'lucide-react';
+import { Plus, Edit, Trash2, X, Search, Vote, Calendar, Loader2, CheckCircle2, Users, Upload, RefreshCw } from 'lucide-react';
 import DataTable from '@/components/DataTable';
 import { voteApi, communityApi } from '@/lib/api';
 import { cn, roundStatusMap, voteStatusMap, wechatStatusMap, formatDate } from '@/lib/utils';
@@ -88,6 +88,13 @@ export default function VotesPage() {
 
   // 批量操作
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+
+  // 导入相关
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [voteColumn, setVoteColumn] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [initializingVotes, setInitializingVotes] = useState(false);
 
 
   useEffect(() => {
@@ -299,6 +306,58 @@ export default function VotesPage() {
       loadVotes();
     } catch (error) {
       console.error('批量更新失败:', error);
+    }
+  };
+
+  // 一键初始化投票记录
+  const handleInitVotes = async () => {
+    if (!selectedRound || !communityId) {
+      alert('请先选择小区和投票轮次');
+      return;
+    }
+    if (!confirm('确定要为所有业主初始化投票记录吗？已有的记录不会被覆盖。')) {
+      return;
+    }
+    try {
+      setInitializingVotes(true);
+      const response = await voteApi.initVotes(selectedRound as number, communityId);
+      alert(`初始化完成！\n创建: ${response.data.created} 条\n跳过（已存在）: ${response.data.skipped} 条`);
+      loadVotes();
+    } catch (error: any) {
+      alert(error.response?.data?.error || '初始化失败');
+    } finally {
+      setInitializingVotes(false);
+    }
+  };
+
+  // 导入投票记录
+  const handleImportVotes = async () => {
+    if (!importFile || !selectedRound || !communityId) {
+      alert('请选择文件、小区和投票轮次');
+      return;
+    }
+    try {
+      setImporting(true);
+      const response = await voteApi.importVotes(
+        importFile,
+        selectedRound as number,
+        communityId,
+        voteColumn || undefined
+      );
+      const result = response.data;
+      let message = `导入完成！\n使用列: ${result.voteColumn}\n成功: ${result.success} 条\n跳过: ${result.skipped} 条\n未找到: ${result.notFound} 条`;
+      if (result.notFoundRooms?.length > 0) {
+        message += `\n\n未找到的房间号（前10个）:\n${result.notFoundRooms.join(', ')}`;
+      }
+      alert(message);
+      setShowImportModal(false);
+      setImportFile(null);
+      setVoteColumn('');
+      loadVotes();
+    } catch (error: any) {
+      alert(error.response?.data?.error || '导入失败');
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -577,6 +636,31 @@ export default function VotesPage() {
               >
                 搜索
               </button>
+
+              {/* 初始化和导入按钮 */}
+              {selectedRound && communityId && (
+                <>
+                  <button
+                    onClick={handleInitVotes}
+                    disabled={initializingVotes}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 shadow-md shadow-emerald-500/20 transition-all duration-200 font-medium disabled:opacity-50"
+                  >
+                    {initializingVotes ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-4 h-4" />
+                    )}
+                    初始化记录
+                  </button>
+                  <button
+                    onClick={() => setShowImportModal(true)}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl hover:from-purple-600 hover:to-purple-700 shadow-md shadow-purple-500/20 transition-all duration-200 font-medium"
+                  >
+                    <Upload className="w-4 h-4" />
+                    导入投票
+                  </button>
+                </>
+              )}
             </div>
 
             {/* 批量操作 */}
@@ -834,6 +918,99 @@ export default function VotesPage() {
                   className="flex-1 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 shadow-lg shadow-blue-500/20 transition-all duration-200 font-medium"
                 >
                   保存
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 导入投票记录弹窗 */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* 弹窗头部 */}
+            <div className="px-6 py-4 bg-gradient-to-r from-slate-50 to-white border-b border-slate-100">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
+                    <Upload className="w-5 h-5 text-white" />
+                  </div>
+                  <h2 className="text-lg font-semibold text-slate-900">
+                    导入投票记录
+                  </h2>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowImportModal(false);
+                    setImportFile(null);
+                    setVoteColumn('');
+                  }}
+                  className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-5">
+              <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl text-sm text-blue-700">
+                <p className="font-medium mb-2">Excel 格式要求：</p>
+                <ul className="list-disc list-inside space-y-1 text-blue-600">
+                  <li>必须包含"房间号"列</li>
+                  <li>投票状态列（如"25B投否"），值为 1 表示已投票</li>
+                  <li>可选：备注列、扫楼情况列</li>
+                </ul>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  选择 Excel 文件 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
+                />
+                {importFile && (
+                  <p className="mt-2 text-sm text-slate-500">
+                    已选择: {importFile.name}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  投票状态列名（可选）
+                </label>
+                <input
+                  type="text"
+                  value={voteColumn}
+                  onChange={(e) => setVoteColumn(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200"
+                  placeholder="如：25B投否（留空则自动查找包含"投否"的列）"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => {
+                    setShowImportModal(false);
+                    setImportFile(null);
+                    setVoteColumn('');
+                  }}
+                  className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 transition-all duration-200 font-medium"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleImportVotes}
+                  disabled={!importFile || importing}
+                  className="flex-1 py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl hover:from-purple-600 hover:to-purple-700 shadow-lg shadow-purple-500/20 transition-all duration-200 font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {importing && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {importing ? '导入中...' : '开始导入'}
                 </button>
               </div>
             </div>

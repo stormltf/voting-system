@@ -96,6 +96,19 @@ export const voteApi = {
   getVotes: (params?: any) => api.get('/votes', { params }),
   saveVote: (data: any) => api.post('/votes', data),
   batchUpdate: (data: any) => api.put('/votes/batch', data),
+  // 初始化和导入
+  initVotes: (roundId: number, communityId: number) =>
+    api.post('/votes/init', { round_id: roundId, community_id: communityId }),
+  importVotes: (file: File, roundId: number, communityId: number, voteColumn?: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('round_id', String(roundId));
+    formData.append('community_id', String(communityId));
+    if (voteColumn) formData.append('vote_column', voteColumn);
+    return api.post('/votes/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
   // 统计
   getStats: (params?: any) => api.get('/votes/stats', { params }),
   getProgress: (params?: any) => api.get('/votes/progress', { params }),
