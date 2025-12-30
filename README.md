@@ -18,7 +18,7 @@
 
 ### 后端
 - **框架**: Express.js 4.18.2 (Node.js)
-- **数据库**: MySQL 8 (mysql2 3.6.5)
+- **数据库**: MySQL 8 / TiDB Cloud Serverless (mysql2 3.6.5)
 - **认证**: JWT (jsonwebtoken 9.0.2)
 - **密码加密**: bcryptjs 2.4.3
 - **文件上传**: multer 1.4.5
@@ -38,6 +38,8 @@
   - 按面积加权统计投票率
   - 支持多维度分析（小区/期数/楼栋）
 - **数据可视化**: 仪表板展示投票进度和统计数据
+- **投票初始化**: 一键为所有业主创建投票记录
+- **投票导入**: 从 Excel 批量导入投票结果
 
 ### 用户系统
 - JWT 身份认证
@@ -177,10 +179,13 @@ voting-system/
 │   ├── next.config.ts
 │   └── jest.config.js
 │
-└── database/                   # 数据库脚本
-    ├── schema.sql             # 数据库结构
-    ├── import_data.sql        # 业主数据导入
-    └── import_votes.sql       # 投票数据导入
+├── database/                   # 数据库脚本
+│   ├── schema.sql             # 数据库结构 (MySQL)
+│   ├── schema-tidb.sql        # TiDB Cloud 兼容版本
+│   ├── import_data.sql        # 业主数据导入
+│   └── import_votes.sql       # 投票数据导入
+│
+└── render.yaml                 # Render 部署配置
 ```
 
 ## 数据库设计
@@ -488,6 +493,8 @@ INSERT INTO vote_rounds (name, year, round_code, status) VALUES
 | GET | `/api/votes` | 获取投票记录 |
 | POST | `/api/votes` | 创建/更新投票记录 |
 | PUT | `/api/votes/batch` | 批量更新投票状态 |
+| POST | `/api/votes/init` | 初始化投票记录 |
+| POST | `/api/votes/import` | 从 Excel 导入投票状态 |
 | GET | `/api/votes/stats` | 获取投票统计 |
 | GET | `/api/votes/progress` | 获取投票进度 |
 
@@ -520,6 +527,64 @@ INSERT INTO vote_rounds (name, year, round_code, status) VALUES
 | `onsite` | 现场投票 | 现场参与投票 |
 | `video` | 视频投票 | 视频方式投票 |
 | `sweep` | 扫楼 | 扫楼方式收集 |
+
+## Render + TiDB Cloud 部署 (推荐)
+
+本项目已部署在 Render + TiDB Cloud 上：
+
+- **前端**: https://voting-frontend-n2p2.onrender.com
+- **后端**: https://voting-backend-c4zo.onrender.com
+
+### 使用 Render Blueprint 部署
+
+1. Fork 此仓库到你的 GitHub
+2. 在 [Render](https://render.com) 创建新 Blueprint
+3. 连接你的 GitHub 仓库
+4. Render 会自动读取 `render.yaml` 配置
+
+### TiDB Cloud 配置
+
+1. 注册 [TiDB Cloud](https://tidbcloud.com) 账号
+2. 创建 Serverless Cluster (免费版)
+3. 获取连接信息
+4. 使用 `database/schema-tidb.sql` 初始化数据库
+
+### 环境变量配置
+
+**后端 (Render Environment Variables):**
+```
+DB_HOST=gateway01.xxx.prod.aws.tidbcloud.com
+DB_PORT=4000
+DB_USER=xxx
+DB_PASSWORD=xxx
+DB_NAME=voting_system
+JWT_SECRET=your-secret-key
+FRONTEND_URL=https://your-frontend.onrender.com
+```
+
+**前端 (Render Environment Variables):**
+```
+NEXT_PUBLIC_API_URL=https://your-backend.onrender.com/api
+```
+
+### TiDB 兼容性注意事项
+
+TiDB Cloud 与标准 MySQL 有一些差异：
+
+1. **端口**: TiDB Cloud 使用 4000 端口 (非标准 3306)
+2. **ENUM 类型**: TiDB 不完全支持，使用 VARCHAR 替代
+3. **严格 GROUP BY**: SELECT 中的非聚合列必须出现在 GROUP BY 中
+4. **HAVING 子句**: 不能使用列别名，必须使用聚合函数表达式
+
+```sql
+-- MySQL 写法（可能不兼容）
+GROUP BY p.id
+HAVING owner_count > 0
+
+-- TiDB 兼容写法
+GROUP BY p.id, p.name, c.name
+HAVING COUNT(o.id) > 0
+```
 
 ## 测试
 
