@@ -989,7 +989,7 @@ export default function VotesPage() {
                   value={voteColumn}
                   onChange={(e) => setVoteColumn(e.target.value)}
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200"
-                  placeholder="如：25B投否（留空则自动查找包含"投否"的列）"
+                  placeholder="如：25B投否（留空则自动查找包含'投否'的列）"
                 />
               </div>
 
