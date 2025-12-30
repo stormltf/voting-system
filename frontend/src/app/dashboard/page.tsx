@@ -69,6 +69,8 @@ export default function DashboardPage() {
       const params = communityId ? { community_id: communityId } : {};
 
       const progressRes = await voteApi.getProgress(params);
+      console.log('Progress params:', params);
+      console.log('Progress data:', progressRes.data);
       setProgress(progressRes.data);
 
       const activeRoundData = progressRes.data.find((r: VoteProgress) => r.status === 'active');
@@ -78,6 +80,8 @@ export default function DashboardPage() {
       };
 
       const statsRes = await voteApi.getStats(statsParams);
+      console.log('Stats params:', statsParams);
+      console.log('PhaseStats:', statsRes.data.phaseStats);
       setPhaseStats(statsRes.data.phaseStats || []);
     } catch (error) {
       console.error('加载数据失败:', error);
