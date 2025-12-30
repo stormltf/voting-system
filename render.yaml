@@ -2,10 +2,10 @@
 # 使用方法：在 Render Dashboard 点击 "New" -> "Blueprint" -> 选择此仓库
 #
 # 注意：Render 免费数据库只支持 PostgreSQL
-# 本项目使用 MySQL，推荐使用 PlanetScale 免费 MySQL
+# 本项目使用 MySQL，推荐使用 TiDB Cloud Serverless 免费 MySQL
 #
 # 部署步骤：
-# 1. 先在 PlanetScale 创建免费 MySQL 数据库
+# 1. 先在 TiDB Cloud 创建免费 Serverless 数据库
 # 2. 在 Render 部署时填入数据库连接信息
 
 services:
@@ -25,9 +25,9 @@ services:
       - key: PORT
         value: 3001
       - key: DB_HOST
-        sync: false  # 手动填入 PlanetScale 主机
+        sync: false  # 手动填入 TiDB Cloud 主机
       - key: DB_PORT
-        value: 3306
+        value: 4000  # TiDB Cloud 默认端口
       - key: DB_USER
         sync: false  # 手动填入
       - key: DB_PASSWORD
