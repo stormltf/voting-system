@@ -12,8 +12,35 @@ const logsRoutes = require('./routes/logs');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// CORS 配置
+const corsOptions = {
+  origin: function (origin, callback) {
+    // 允许的域名列表
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:8080',
+      process.env.FRONTEND_URL,  // 生产环境前端 URL
+    ].filter(Boolean);
+
+    // 允许无 origin 的请求（如 Postman、curl）
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      // 生产环境也允许 Render 的域名
+      if (origin && (origin.endsWith('.onrender.com') || origin.endsWith('.vercel.app'))) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
+
 // 中间件
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

@@ -40,6 +40,8 @@ services:
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: 7d
+      - key: FRONTEND_URL
+        sync: false  # 部署前端后，填入前端 URL（如 https://voting-frontend.onrender.com）
 
   # 前端服务
   - type: web
