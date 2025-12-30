@@ -38,11 +38,14 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [communityId, setCommunityId] = useState<number | null>(null);
 
+  const [initialized, setInitialized] = useState(false);
+
   useEffect(() => {
     const savedId = localStorage.getItem('selectedCommunityId');
     if (savedId) {
       setCommunityId(parseInt(savedId));
     }
+    setInitialized(true);
 
     const handleCommunityChange = (e: CustomEvent) => {
       setCommunityId(e.detail.id);
@@ -55,8 +58,10 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    loadData();
-  }, [communityId]);
+    if (initialized) {
+      loadData();
+    }
+  }, [communityId, initialized]);
 
   const loadData = async () => {
     try {
