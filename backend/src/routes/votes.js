@@ -445,7 +445,8 @@ router.post('/import', authMiddleware, upload.single('file'), async (req, res) =
 
     // 处理数据
     let successCount = 0;
-    let skipCount = 0;
+    let votedCount = 0;
+    let pendingCount = 0;
     let notFoundCount = 0;
     const notFoundRooms = [];
 
@@ -473,13 +474,7 @@ router.post('/import', authMiddleware, upload.single('file'), async (req, res) =
       // 判断投票状态：值为 1 表示已投票
       const voteStatus = (voteValue === 1 || voteValue === '1' || voteValue === '是') ? 'voted' : 'pending';
 
-      // 如果是待投票且没有备注/扫楼信息，跳过
-      if (voteStatus === 'pending' && !remark && !sweepStatus) {
-        skipCount++;
-        continue;
-      }
-
-      // 插入或更新投票记录
+      // 插入或更新投票记录（所有业主都导入，包括未投票的）
       await pool.query(`
         INSERT INTO votes (owner_id, round_id, vote_status, remark, sweep_status)
         VALUES (?, ?, ?, ?, ?)
@@ -490,19 +485,25 @@ router.post('/import', authMiddleware, upload.single('file'), async (req, res) =
       `, [ownerId, round_id, voteStatus, remark || null, sweepStatus || null]);
 
       successCount++;
+      if (voteStatus === 'voted') {
+        votedCount++;
+      } else {
+        pendingCount++;
+      }
     }
 
     // 记录日志
     const log = createLogger(req);
     await log(Actions.IMPORT, Modules.VOTE, {
       targetType: 'vote',
-      details: `导入投票记录: 成功 ${successCount}, 跳过 ${skipCount}, 未找到 ${notFoundCount}`,
+      details: `导入投票记录: 总计 ${successCount} (已投票 ${votedCount}, 待投票 ${pendingCount}), 未找到 ${notFoundCount}`,
     });
 
     res.json({
       message: `导入完成`,
       success: successCount,
-      skipped: skipCount,
+      voted: votedCount,
+      pending: pendingCount,
       notFound: notFoundCount,
       notFoundRooms: notFoundRooms,
       voteColumn: headers[voteColIndex],

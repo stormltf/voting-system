@@ -345,7 +345,7 @@ export default function VotesPage() {
         voteColumn || undefined
       );
       const result = response.data;
-      let message = `导入完成！\n使用列: ${result.voteColumn}\n成功: ${result.success} 条\n跳过: ${result.skipped} 条\n未找到: ${result.notFound} 条`;
+      let message = `导入完成！\n使用列: ${result.voteColumn}\n总计: ${result.success} 条\n  - 已投票: ${result.voted} 条\n  - 待投票: ${result.pending} 条\n未找到: ${result.notFound} 条`;
       if (result.notFoundRooms?.length > 0) {
         message += `\n\n未找到的房间号（前10个）:\n${result.notFoundRooms.join(', ')}`;
       }
