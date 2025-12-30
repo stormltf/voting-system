@@ -583,8 +583,8 @@ router.get('/stats', authMiddleware, async (req, res) => {
       LEFT JOIN owners o ON o.phase_id = p.id
       LEFT JOIN votes v ON o.id = v.owner_id AND v.round_id = ?
       WHERE ${community_id ? 'p.community_id = ?' : '1=1'}
-      GROUP BY p.id
-      HAVING owner_count > 0
+      GROUP BY p.id, p.name, c.name
+      HAVING COUNT(o.id) > 0
       ORDER BY c.name, p.code
     ` : `
       SELECT
@@ -601,8 +601,8 @@ router.get('/stats', authMiddleware, async (req, res) => {
       JOIN communities c ON p.community_id = c.id
       LEFT JOIN owners o ON o.phase_id = p.id
       WHERE ${community_id ? 'p.community_id = ?' : '1=1'}
-      GROUP BY p.id
-      HAVING owner_count > 0
+      GROUP BY p.id, p.name, c.name
+      HAVING COUNT(o.id) > 0
       ORDER BY c.name, p.code
     `;
 
