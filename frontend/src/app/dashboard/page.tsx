@@ -39,6 +39,7 @@ export default function DashboardPage() {
   const [communityId, setCommunityId] = useState<number | null>(null);
 
   const [initialized, setInitialized] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     const savedId = localStorage.getItem('selectedCommunityId');
@@ -48,7 +49,10 @@ export default function DashboardPage() {
     setInitialized(true);
 
     const handleCommunityChange = (e: CustomEvent) => {
-      setCommunityId(e.detail.id);
+      const newId = e.detail.id;
+      setCommunityId(newId);
+      // 即使选择同一个小区，也强制刷新数据
+      setRefreshKey(prev => prev + 1);
     };
     window.addEventListener('communityChanged', handleCommunityChange as EventListener);
 
@@ -61,7 +65,7 @@ export default function DashboardPage() {
     if (initialized) {
       loadData();
     }
-  }, [communityId, initialized]);
+  }, [communityId, initialized, refreshKey]);
 
   const loadData = async () => {
     try {
