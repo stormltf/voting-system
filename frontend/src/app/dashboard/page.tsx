@@ -86,12 +86,17 @@ export default function DashboardPage() {
     }
   };
 
-  const totalOwners = phaseStats.reduce((sum, p) => sum + (p.owner_count || 0), 0);
-  const totalHouseArea = phaseStats.reduce((sum, p) => sum + parseFloat(String(p.total_area || 0)), 0);
-  const totalParkingArea = phaseStats.reduce((sum, p) => sum + parseFloat(String(p.total_parking_area || 0)), 0);
-  const totalArea = totalHouseArea + totalParkingArea;
-
   const activeRound = progress.find((r) => r.status === 'active');
+
+  // 优先从 activeRound 获取总数，否则从 phaseStats 累加
+  const totalOwners = activeRound?.total_owners || phaseStats.reduce((sum, p) => sum + (p.owner_count || 0), 0);
+  const totalHouseArea = activeRound
+    ? parseFloat(String(activeRound.total_area || 0))
+    : phaseStats.reduce((sum, p) => sum + parseFloat(String(p.total_area || 0)), 0);
+  const totalParkingArea = activeRound
+    ? parseFloat(String(activeRound.total_parking_area || 0))
+    : phaseStats.reduce((sum, p) => sum + parseFloat(String(p.total_parking_area || 0)), 0);
+  const totalArea = totalHouseArea + totalParkingArea;
 
   if (loading) {
     return (
