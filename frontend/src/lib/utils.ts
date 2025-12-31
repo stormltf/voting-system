@@ -35,7 +35,6 @@ export const voteStatusMap: Record<string, { label: string; color: string }> = {
   refused: { label: '拒绝投票', color: 'bg-red-100 text-red-800' },
   onsite: { label: '现场投票', color: 'bg-blue-100 text-blue-800' },
   video: { label: '视频投票', color: 'bg-purple-100 text-purple-800' },
-  sweep: { label: '扫楼', color: 'bg-yellow-100 text-yellow-800' },
 };
 
 // 微信状态映射

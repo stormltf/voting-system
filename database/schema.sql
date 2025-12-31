@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS votes (
   id INT AUTO_INCREMENT PRIMARY KEY,
   owner_id INT NOT NULL,
   round_id INT NOT NULL,
-  vote_status ENUM('pending', 'voted', 'refused', 'onsite', 'video', 'sweep') DEFAULT 'pending',
+  vote_status ENUM('pending', 'voted', 'refused', 'onsite', 'video') DEFAULT 'pending',
   vote_phone VARCHAR(50),
   vote_date DATE,
   remark TEXT,

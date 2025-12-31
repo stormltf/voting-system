@@ -607,7 +607,7 @@ router.get('/export', authMiddleware, async (req, res) => {
     }
 
     let whereConditions = ['1=1'];
-    let params = [round_id];
+    let params = [];
 
     // 非超级管理员只能导出自己小区的数据
     if (!isSuperAdmin(req.user)) {
@@ -798,8 +798,7 @@ router.get('/unit-rooms', authMiddleware, async (req, res) => {
           total_rooms: 0,
           voted_count: 0,
           refused_count: 0,
-          pending_count: 0,
-          sweep_count: 0
+          pending_count: 0
         },
         floors: {},
         stats: { max_floor: 0, max_rooms_per_floor: 0 }
@@ -811,7 +810,7 @@ router.get('/unit-rooms', authMiddleware, async (req, res) => {
     let maxFloor = 0;
     let maxRoomsPerFloor = 0;
 
-    const stats = { voted: 0, refused: 0, pending: 0, sweep: 0 };
+    const stats = { voted: 0, refused: 0, pending: 0 };
 
     for (const room of rooms) {
       // 从 room 字段解析楼层 (通常最后两位是房号，前面是楼层)
@@ -859,8 +858,6 @@ router.get('/unit-rooms', authMiddleware, async (req, res) => {
         stats.voted++;
       } else if (room.vote_status === 'refused') {
         stats.refused++;
-      } else if (room.vote_status === 'sweep') {
-        stats.sweep++;
       } else {
         stats.pending++;
       }
@@ -875,8 +872,7 @@ router.get('/unit-rooms', authMiddleware, async (req, res) => {
         total_rooms: rooms.length,
         voted_count: stats.voted,
         refused_count: stats.refused,
-        pending_count: stats.pending,
-        sweep_count: stats.sweep
+        pending_count: stats.pending
       },
       floors,
       stats: {
@@ -934,7 +930,6 @@ router.get('/building-overview', authMiddleware, async (req, res) => {
         COUNT(*) as total_rooms,
         COUNT(CASE WHEN v.vote_status IN ('voted', 'onsite', 'video') THEN 1 END) as voted_count,
         COUNT(CASE WHEN v.vote_status = 'refused' THEN 1 END) as refused_count,
-        COUNT(CASE WHEN v.vote_status = 'sweep' THEN 1 END) as sweep_count,
         COUNT(CASE WHEN COALESCE(v.vote_status, 'pending') = 'pending' THEN 1 END) as pending_count
       FROM owners o
       JOIN phases p ON o.phase_id = p.id
@@ -956,7 +951,6 @@ router.get('/building-overview', authMiddleware, async (req, res) => {
           total_rooms: 0,
           voted_count: 0,
           refused_count: 0,
-          sweep_count: 0,
           pending_count: 0
         });
       }
@@ -965,7 +959,6 @@ router.get('/building-overview', authMiddleware, async (req, res) => {
       phase.total_rooms += row.total_rooms;
       phase.voted_count += row.voted_count;
       phase.refused_count += row.refused_count;
-      phase.sweep_count += row.sweep_count;
       phase.pending_count += row.pending_count;
 
       if (!phase.buildings.has(row.building)) {
@@ -975,7 +968,6 @@ router.get('/building-overview', authMiddleware, async (req, res) => {
           total_rooms: 0,
           voted_count: 0,
           refused_count: 0,
-          sweep_count: 0,
           pending_count: 0
         });
       }
@@ -984,7 +976,6 @@ router.get('/building-overview', authMiddleware, async (req, res) => {
       building.total_rooms += row.total_rooms;
       building.voted_count += row.voted_count;
       building.refused_count += row.refused_count;
-      building.sweep_count += row.sweep_count;
       building.pending_count += row.pending_count;
 
       building.units.push({
@@ -992,7 +983,6 @@ router.get('/building-overview', authMiddleware, async (req, res) => {
         total_rooms: row.total_rooms,
         voted_count: row.voted_count,
         refused_count: row.refused_count,
-        sweep_count: row.sweep_count,
         pending_count: row.pending_count
       });
     }

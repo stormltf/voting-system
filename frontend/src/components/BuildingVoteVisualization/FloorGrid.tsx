@@ -7,9 +7,12 @@ import { UnitRoomsResponse, RoomData } from './types';
 interface Props {
   data: UnitRoomsResponse;
   onRoomClick: (room: RoomData) => void;
+  selectable?: boolean;
+  selectedRooms?: Set<number>;
+  onSelectRoom?: (ownerId: number, selected: boolean) => void;
 }
 
-export default function FloorGrid({ data, onRoomClick }: Props) {
+export default function FloorGrid({ data, onRoomClick, selectable, selectedRooms, onSelectRoom }: Props) {
   const { floors, meta } = data;
 
   // 从高到低排列楼层
@@ -52,13 +55,24 @@ export default function FloorGrid({ data, onRoomClick }: Props) {
             <span className="w-3 h-3 rounded bg-slate-300"></span>
             待投票 {meta.pending_count}
           </span>
-          {meta.sweep_count > 0 && (
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded bg-amber-500"></span>
-              扫楼中 {meta.sweep_count}
-            </span>
-          )}
         </div>
+      </div>
+
+      {/* 图例说明 */}
+      <div className="flex flex-wrap items-center gap-4 mb-4 text-xs text-slate-500">
+        <span>扫楼状态图例:</span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-4 h-4 rounded bg-slate-200 ring-2 ring-amber-400"></span>
+          已扫楼
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-4 h-4 rounded bg-slate-200 ring-2 ring-amber-300 ring-dashed"></span>
+          扫楼中
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-4 h-4 rounded bg-slate-200"></span>
+          待扫楼
+        </span>
       </div>
 
       {/* 楼层网格 */}
@@ -82,6 +96,9 @@ export default function FloorGrid({ data, onRoomClick }: Props) {
                     key={room.owner_id}
                     room={room}
                     onClick={() => onRoomClick(room)}
+                    selectable={selectable}
+                    selected={selectedRooms?.has(room.owner_id)}
+                    onSelect={(selected) => onSelectRoom?.(room.owner_id, selected)}
                   />
                 ))}
             </div>

@@ -124,7 +124,6 @@ describe('voteStatusMap', () => {
     expect(voteStatusMap).toHaveProperty('refused');
     expect(voteStatusMap).toHaveProperty('onsite');
     expect(voteStatusMap).toHaveProperty('video');
-    expect(voteStatusMap).toHaveProperty('sweep');
   });
 
   it('每个状态应该有 label 和 color', () => {

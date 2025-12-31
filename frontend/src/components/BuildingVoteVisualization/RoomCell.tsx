@@ -1,21 +1,41 @@
 'use client';
 
 import { useState } from 'react';
+import { Check } from 'lucide-react';
 import { RoomData, voteStatusConfig } from './types';
+
+// 扫楼状态配置
+const sweepStatusConfig: Record<string, { label: string; borderColor: string }> = {
+  completed: { label: '已扫楼', borderColor: 'ring-2 ring-amber-400' },
+  in_progress: { label: '扫楼中', borderColor: 'ring-2 ring-amber-300 ring-dashed' },
+  pending: { label: '待扫楼', borderColor: '' },
+};
 
 interface Props {
   room: RoomData;
   onClick: () => void;
+  selectable?: boolean;
+  selected?: boolean;
+  onSelect?: (selected: boolean) => void;
 }
 
-export default function RoomCell({ room, onClick }: Props) {
+export default function RoomCell({ room, onClick, selectable, selected, onSelect }: Props) {
   const [showTooltip, setShowTooltip] = useState(false);
   const status = voteStatusConfig[room.vote_status] || voteStatusConfig.pending;
+  const sweepStatus = sweepStatusConfig[room.sweep_status || 'pending'] || sweepStatusConfig.pending;
+
+  const handleClick = () => {
+    if (selectable && onSelect) {
+      onSelect(!selected);
+    } else {
+      onClick();
+    }
+  };
 
   return (
     <div className="relative">
       <button
-        onClick={onClick}
+        onClick={handleClick}
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
         className={`
@@ -24,9 +44,15 @@ export default function RoomCell({ room, onClick }: Props) {
           transition-all duration-200 cursor-pointer
           shadow-sm hover:shadow-md hover:scale-105
           ${status.bgColor} ${status.color}
+          ${sweepStatus.borderColor}
+          ${selected ? 'ring-2 ring-blue-500 ring-offset-1' : ''}
         `}
       >
-        {room.room_in_floor}
+        {selectable && selected ? (
+          <Check className="w-4 h-4" />
+        ) : (
+          room.room_in_floor
+        )}
       </button>
 
       {/* 悬停提示 */}
@@ -48,10 +74,14 @@ export default function RoomCell({ room, onClick }: Props) {
                 <span className="text-white">{room.area ? `${room.area} m²` : '-'}</span>
               </div>
               <div className="flex justify-between gap-4">
-                <span>状态:</span>
+                <span>投票:</span>
                 <span className={`px-1.5 py-0.5 rounded text-xs ${status.bgColor} ${status.color}`}>
                   {status.label}
                 </span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span>扫楼:</span>
+                <span className="text-amber-400">{sweepStatus.label}</span>
               </div>
               {room.remark && (
                 <div className="pt-1 border-t border-slate-700 mt-1">

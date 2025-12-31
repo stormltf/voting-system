@@ -8,7 +8,6 @@ export interface UnitRoomsResponse {
     voted_count: number;
     refused_count: number;
     pending_count: number;
-    sweep_count: number;
   };
   floors: {
     [floor: number]: RoomData[];
@@ -55,7 +54,6 @@ export const voteStatusConfig: Record<string, { label: string; color: string; bg
   video: { label: '视频投票', color: 'text-white', bgColor: 'bg-emerald-500' },
   refused: { label: '拒绝', color: 'text-white', bgColor: 'bg-red-500' },
   pending: { label: '待投票', color: 'text-slate-600', bgColor: 'bg-slate-300' },
-  sweep: { label: '扫楼中', color: 'text-white', bgColor: 'bg-amber-500' },
 };
 
 // 楼栋概览相关类型
@@ -64,7 +62,6 @@ export interface UnitStats {
   total_rooms: number;
   voted_count: number;
   refused_count: number;
-  sweep_count: number;
   pending_count: number;
 }
 
@@ -74,7 +71,6 @@ export interface BuildingStats {
   total_rooms: number;
   voted_count: number;
   refused_count: number;
-  sweep_count: number;
   pending_count: number;
 }
 
@@ -85,7 +81,6 @@ export interface PhaseStats {
   total_rooms: number;
   voted_count: number;
   refused_count: number;
-  sweep_count: number;
   pending_count: number;
 }
 
