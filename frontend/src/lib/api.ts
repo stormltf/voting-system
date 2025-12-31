@@ -154,13 +154,13 @@ export const voteApi = {
     return `${API_BASE_URL}/votes/export?${searchParams.toString()}`;
   },
   // 扫楼状态管理
-  getSweepOverview: (params: { community_id: number }) =>
+  getSweepOverview: (params: { community_id: number; round_id?: number }) =>
     api.get('/votes/sweep-overview', { params }),
-  getSweepUnitRooms: (params: { phase_id: number; building: string; unit: string }) =>
+  getSweepUnitRooms: (params: { round_id: number; phase_id: number; building: string; unit: string }) =>
     api.get('/votes/sweep-unit-rooms', { params }),
-  updateSweepStatus: (ownerId: number, data: { sweep_status: string; sweep_remark?: string }) =>
+  updateSweepStatus: (ownerId: number, data: { round_id: number; sweep_status: string; sweep_remark?: string }) =>
     api.put(`/votes/sweep/${ownerId}`, data),
-  batchUpdateSweep: (data: { owner_ids: number[]; sweep_status: string; community_id: number }) =>
+  batchUpdateSweep: (data: { owner_ids: number[]; round_id: number; sweep_status: string; community_id: number }) =>
     api.put('/votes/sweep-batch', data),
 };
 

@@ -7,11 +7,12 @@ import { voteApi } from '@/lib/api';
 
 interface Props {
   room: SweepRoomData;
+  roundId: number;
   onClose: () => void;
   onSaved: () => void;
 }
 
-export default function SweepEditModal({ room, onClose, onSaved }: Props) {
+export default function SweepEditModal({ room, roundId, onClose, onSaved }: Props) {
   const [sweepStatus, setSweepStatus] = useState(room.sweep_status || 'pending');
   const [sweepRemark, setSweepRemark] = useState(room.sweep_remark || '');
   const [saving, setSaving] = useState(false);
@@ -22,6 +23,7 @@ export default function SweepEditModal({ room, onClose, onSaved }: Props) {
       setSaving(true);
       setError('');
       await voteApi.updateSweepStatus(room.owner_id, {
+        round_id: roundId,
         sweep_status: sweepStatus,
         sweep_remark: sweepRemark,
       });

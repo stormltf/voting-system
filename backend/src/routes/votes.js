@@ -1015,10 +1015,10 @@ router.get('/building-overview', authMiddleware, async (req, res) => {
 
 // ===== 扫楼状态管理 =====
 
-// 获取扫楼状态概览（按期数、楼栋、单元汇总统计）
+// 获取扫楼状态概览（按期数、楼栋、单元汇总统计）- 基于轮次
 router.get('/sweep-overview', authMiddleware, async (req, res) => {
   try {
-    const { community_id } = req.query;
+    const { community_id, round_id } = req.query;
 
     if (!community_id) {
       return res.status(400).json({ error: '缺少必要参数: community_id' });
@@ -1029,7 +1029,32 @@ router.get('/sweep-overview', authMiddleware, async (req, res) => {
       return res.status(403).json({ error: '无权访问该小区' });
     }
 
-    // 获取该小区所有期数的楼栋单元扫楼统计
+    // 确定使用的投票轮次
+    let effectiveRoundId = round_id;
+    if (!effectiveRoundId) {
+      const [latestRound] = await pool.query(`
+        SELECT id FROM vote_rounds
+        WHERE community_id = ?
+        ORDER BY status = 'active' DESC, created_at DESC
+        LIMIT 1
+      `, [community_id]);
+
+      if (latestRound.length === 0) {
+        return res.json({ round: null, phases: [] });
+      }
+      effectiveRoundId = latestRound[0].id;
+    }
+
+    // 获取轮次信息
+    const [roundInfo] = await pool.query(`
+      SELECT id, name, status, year, round_code FROM vote_rounds WHERE id = ?
+    `, [effectiveRoundId]);
+
+    if (roundInfo.length === 0) {
+      return res.json({ round: null, phases: [] });
+    }
+
+    // 获取该小区所有期数的楼栋单元扫楼统计（基于votes表的sweep_status）
     const [stats] = await pool.query(`
       SELECT
         p.id as phase_id,
@@ -1037,15 +1062,16 @@ router.get('/sweep-overview', authMiddleware, async (req, res) => {
         o.building,
         o.unit,
         COUNT(*) as total_rooms,
-        COUNT(CASE WHEN o.sweep_status = 'completed' THEN 1 END) as completed_count,
-        COUNT(CASE WHEN o.sweep_status = 'in_progress' THEN 1 END) as in_progress_count,
-        COUNT(CASE WHEN o.sweep_status IS NULL OR o.sweep_status = '' OR o.sweep_status = 'pending' THEN 1 END) as pending_count
+        COUNT(CASE WHEN v.sweep_status = 'completed' THEN 1 END) as completed_count,
+        COUNT(CASE WHEN v.sweep_status = 'in_progress' THEN 1 END) as in_progress_count,
+        COUNT(CASE WHEN v.sweep_status IS NULL OR v.sweep_status = '' OR v.sweep_status = 'pending' THEN 1 END) as pending_count
       FROM owners o
       JOIN phases p ON o.phase_id = p.id
+      LEFT JOIN votes v ON o.id = v.owner_id AND v.round_id = ?
       WHERE p.community_id = ?
       GROUP BY p.id, p.name, o.building, o.unit
       ORDER BY p.name, CAST(o.building AS UNSIGNED), CAST(o.unit AS UNSIGNED)
-    `, [community_id]);
+    `, [effectiveRoundId, community_id]);
 
     // 按期数分组组织数据
     const phasesMap = new Map();
@@ -1101,23 +1127,23 @@ router.get('/sweep-overview', authMiddleware, async (req, res) => {
       buildings: Array.from(phase.buildings.values())
     }));
 
-    res.json({ phases });
+    res.json({ round: roundInfo[0], phases });
   } catch (error) {
     console.error('获取扫楼概览数据错误:', error);
     res.status(500).json({ error: '服务器错误' });
   }
 });
 
-// 获取某单元的详细扫楼状态数据
+// 获取某单元的详细扫楼状态数据 - 基于轮次
 router.get('/sweep-unit-rooms', authMiddleware, async (req, res) => {
   try {
-    const { phase_id, building, unit } = req.query;
+    const { round_id, phase_id, building, unit } = req.query;
 
-    if (!phase_id || !building || !unit) {
-      return res.status(400).json({ error: '缺少必要参数: phase_id, building, unit' });
+    if (!round_id || !phase_id || !building || !unit) {
+      return res.status(400).json({ error: '缺少必要参数: round_id, phase_id, building, unit' });
     }
 
-    // 查询该单元所有业主及其扫楼状态
+    // 查询该单元所有业主及其扫楼状态（从votes表获取）
     const [rooms] = await pool.query(`
       SELECT
         o.id as owner_id,
@@ -1127,15 +1153,19 @@ router.get('/sweep-unit-rooms', authMiddleware, async (req, res) => {
         o.phone1,
         o.area,
         o.parking_no,
-        COALESCE(o.sweep_status, 'pending') as sweep_status,
-        o.sweep_remark,
-        o.sweep_date,
-        p.name as phase_name
+        COALESCE(v.sweep_status, 'pending') as sweep_status,
+        v.remark as sweep_remark,
+        v.updated_at as sweep_date,
+        v.vote_status,
+        p.name as phase_name,
+        r.name as round_name
       FROM owners o
       JOIN phases p ON o.phase_id = p.id
+      LEFT JOIN votes v ON o.id = v.owner_id AND v.round_id = ?
+      LEFT JOIN vote_rounds r ON r.id = ?
       WHERE o.phase_id = ? AND o.building = ? AND o.unit = ?
       ORDER BY o.room ASC
-    `, [phase_id, building, unit]);
+    `, [round_id, round_id, phase_id, building, unit]);
 
     if (rooms.length === 0) {
       return res.json({
@@ -1143,6 +1173,7 @@ router.get('/sweep-unit-rooms', authMiddleware, async (req, res) => {
           phase_name: '',
           building,
           unit,
+          round_name: '',
           total_rooms: 0,
           completed_count: 0,
           in_progress_count: 0,
@@ -1192,7 +1223,8 @@ router.get('/sweep-unit-rooms', authMiddleware, async (req, res) => {
         parking_no: room.parking_no,
         sweep_status: room.sweep_status,
         sweep_remark: room.sweep_remark,
-        sweep_date: room.sweep_date
+        sweep_date: room.sweep_date,
+        vote_status: room.vote_status
       });
 
       maxRoomsPerFloor = Math.max(maxRoomsPerFloor, floors[floor].length);
@@ -1212,6 +1244,7 @@ router.get('/sweep-unit-rooms', authMiddleware, async (req, res) => {
         phase_name: rooms[0]?.phase_name || '',
         building,
         unit,
+        round_name: rooms[0]?.round_name || '',
         total_rooms: rooms.length,
         completed_count: stats.completed,
         in_progress_count: stats.in_progress,
@@ -1229,11 +1262,15 @@ router.get('/sweep-unit-rooms', authMiddleware, async (req, res) => {
   }
 });
 
-// 更新扫楼状态（管理员可操作）
+// 更新扫楼状态（管理员可操作）- 更新votes表
 router.put('/sweep/:ownerId', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { ownerId } = req.params;
-    const { sweep_status, sweep_remark } = req.body;
+    const { round_id, sweep_status, sweep_remark } = req.body;
+
+    if (!round_id) {
+      return res.status(400).json({ error: '请指定投票轮次' });
+    }
 
     // 获取业主所属小区
     const [owners] = await pool.query(`
@@ -1254,16 +1291,19 @@ router.put('/sweep/:ownerId', authMiddleware, adminMiddleware, async (req, res) 
       return res.status(403).json({ error: '无权管理该小区' });
     }
 
+    // 更新votes表的sweep_status（如果记录不存在则创建）
     await pool.query(`
-      UPDATE owners
-      SET sweep_status = ?, sweep_remark = ?, sweep_date = NOW()
-      WHERE id = ?
-    `, [sweep_status, sweep_remark, ownerId]);
+      INSERT INTO votes (owner_id, round_id, sweep_status, remark)
+      VALUES (?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        sweep_status = VALUES(sweep_status),
+        remark = COALESCE(VALUES(remark), remark)
+    `, [ownerId, round_id, sweep_status, sweep_remark]);
 
     // 记录日志
     const log = createLogger(req);
-    await log(Actions.UPDATE, Modules.OWNER, {
-      targetType: 'owner',
+    await log(Actions.UPDATE, Modules.VOTE, {
+      targetType: 'sweep',
       targetId: parseInt(ownerId),
       targetName: owner.room_number,
       details: `更新扫楼状态: ${owner.room_number} -> ${sweep_status}`,
@@ -1276,13 +1316,17 @@ router.put('/sweep/:ownerId', authMiddleware, adminMiddleware, async (req, res) 
   }
 });
 
-// 批量更新扫楼状态（管理员可操作）
+// 批量更新扫楼状态（管理员可操作）- 更新votes表
 router.put('/sweep-batch', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const { owner_ids, sweep_status, community_id } = req.body;
+    const { owner_ids, round_id, sweep_status, community_id } = req.body;
 
     if (!owner_ids || !Array.isArray(owner_ids) || owner_ids.length === 0) {
       return res.status(400).json({ error: '请选择业主' });
+    }
+
+    if (!round_id) {
+      return res.status(400).json({ error: '请选择投票轮次' });
     }
 
     if (!sweep_status) {
@@ -1294,17 +1338,19 @@ router.put('/sweep-batch', authMiddleware, adminMiddleware, async (req, res) => 
       return res.status(403).json({ error: '无权管理该小区' });
     }
 
-    // 批量更新
+    // 批量更新votes表
+    const values = owner_ids.map(id => [id, round_id, sweep_status]);
     await pool.query(`
-      UPDATE owners
-      SET sweep_status = ?, sweep_date = NOW()
-      WHERE id IN (?)
-    `, [sweep_status, owner_ids]);
+      INSERT INTO votes (owner_id, round_id, sweep_status)
+      VALUES ?
+      ON DUPLICATE KEY UPDATE
+        sweep_status = VALUES(sweep_status)
+    `, [values]);
 
     // 记录日志
     const log = createLogger(req);
-    await log(Actions.BATCH_UPDATE, Modules.OWNER, {
-      targetType: 'owner',
+    await log(Actions.BATCH_UPDATE, Modules.VOTE, {
+      targetType: 'sweep',
       details: `批量更新扫楼状态: ${owner_ids.length} 条记录 -> ${sweep_status}`,
     });
 

@@ -10,6 +10,7 @@ import {
   SweepRoomData,
   SweepOverviewResponse,
   SweepPhaseStats,
+  Round,
 } from './types';
 
 interface Props {
@@ -19,6 +20,8 @@ interface Props {
 export default function SweepStatusVisualization({ communityId }: Props) {
   // 数据状态
   const [overviewData, setOverviewData] = useState<SweepOverviewResponse | null>(null);
+  const [rounds, setRounds] = useState<Round[]>([]);
+  const [selectedRoundId, setSelectedRoundId] = useState<number | null>(null);
 
   // 详情弹窗状态
   const [selectedUnit, setSelectedUnit] = useState<{
@@ -35,25 +38,53 @@ export default function SweepStatusVisualization({ communityId }: Props) {
   const [loading, setLoading] = useState(false);
   const [expandedPhases, setExpandedPhases] = useState<Set<number>>(new Set());
 
+  // 加载投票轮次列表
+  useEffect(() => {
+    if (!communityId) return;
+
+    const loadRounds = async () => {
+      try {
+        const res = await voteApi.getRounds({ community_id: communityId });
+        setRounds(res.data);
+      } catch (error) {
+        console.error('加载投票轮次失败:', error);
+      }
+    };
+
+    loadRounds();
+  }, [communityId]);
+
   // 加载扫楼概览数据
   const loadOverview = useCallback(async () => {
     if (!communityId) return;
 
     try {
       setLoading(true);
-      const res = await voteApi.getSweepOverview({ community_id: communityId });
+      const params: { community_id: number; round_id?: number } = {
+        community_id: communityId,
+      };
+      if (selectedRoundId) {
+        params.round_id = selectedRoundId;
+      }
+
+      const res = await voteApi.getSweepOverview(params);
       setOverviewData(res.data);
 
       // 默认展开所有期数
       if (res.data.phases) {
         setExpandedPhases(new Set(res.data.phases.map((p: SweepPhaseStats) => p.phase_id)));
       }
+
+      // 如果没有选择轮次，从返回数据中获取默认轮次
+      if (!selectedRoundId && res.data.round) {
+        setSelectedRoundId(res.data.round.id);
+      }
     } catch (error) {
       console.error('加载扫楼概览失败:', error);
     } finally {
       setLoading(false);
     }
-  }, [communityId]);
+  }, [communityId, selectedRoundId]);
 
   useEffect(() => {
     loadOverview();
@@ -61,11 +92,12 @@ export default function SweepStatusVisualization({ communityId }: Props) {
 
   // 加载单元详情
   const loadUnitDetail = useCallback(async () => {
-    if (!selectedUnit) return;
+    if (!selectedUnit || !overviewData?.round) return;
 
     try {
       setLoadingRooms(true);
       const res = await voteApi.getSweepUnitRooms({
+        round_id: overviewData.round.id,
         phase_id: selectedUnit.phaseId,
         building: selectedUnit.building,
         unit: selectedUnit.unit,
@@ -77,7 +109,7 @@ export default function SweepStatusVisualization({ communityId }: Props) {
     } finally {
       setLoadingRooms(false);
     }
-  }, [selectedUnit]);
+  }, [selectedUnit, overviewData?.round]);
 
   useEffect(() => {
     loadUnitDetail();
@@ -131,19 +163,41 @@ export default function SweepStatusVisualization({ communityId }: Props) {
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden">
-      {/* 标题 */}
+      {/* 标题和轮次选择 */}
       <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Footprints className="w-5 h-5 text-slate-400" />
             <h2 className="text-lg font-semibold text-slate-900">扫楼进度管理</h2>
+            {overviewData?.round && (
+              <span className="text-sm text-slate-500 ml-2">
+                （{overviewData.round.name}
+                {overviewData.round.status === 'active' && (
+                  <span className="text-emerald-600 ml-1">进行中</span>
+                )}
+                ）
+              </span>
+            )}
           </div>
-          <button
-            onClick={loadOverview}
-            className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
-          >
-            刷新
-          </button>
+
+          {/* 轮次选择 */}
+          {rounds.length > 0 && (
+            <div className="relative">
+              <select
+                value={selectedRoundId ?? ''}
+                onChange={(e) => setSelectedRoundId(e.target.value ? Number(e.target.value) : null)}
+                className="appearance-none px-3 py-1.5 pr-8 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none cursor-pointer"
+              >
+                {rounds.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                    {r.status === 'active' ? ' (进行中)' : ''}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            </div>
+          )}
         </div>
       </div>
 
@@ -261,7 +315,9 @@ export default function SweepStatusVisualization({ communityId }: Props) {
                 <h3 className="text-lg font-semibold text-slate-900">
                   {selectedUnit.phaseName} · {selectedUnit.building}号楼 · {selectedUnit.unit}单元
                 </h3>
-                <p className="text-sm text-slate-500 mt-0.5">扫楼进度</p>
+                {overviewData?.round && (
+                  <p className="text-sm text-slate-500 mt-0.5">{overviewData.round.name} - 扫楼进度</p>
+                )}
               </div>
               <button
                 onClick={closeDetail}
@@ -289,9 +345,10 @@ export default function SweepStatusVisualization({ communityId }: Props) {
       )}
 
       {/* 房间编辑弹窗 */}
-      {editingRoom && (
+      {editingRoom && overviewData?.round && (
         <SweepEditModal
           room={editingRoom}
+          roundId={overviewData.round.id}
           onClose={() => setEditingRoom(null)}
           onSaved={() => {
             loadUnitDetail();

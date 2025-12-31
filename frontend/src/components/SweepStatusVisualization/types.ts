@@ -3,6 +3,7 @@ export interface SweepUnitRoomsResponse {
     phase_name: string;
     building: string;
     unit: string;
+    round_name: string;
     total_rooms: number;
     completed_count: number;
     in_progress_count: number;
@@ -29,6 +30,7 @@ export interface SweepRoomData {
   sweep_status: string;
   sweep_remark: string | null;
   sweep_date: string | null;
+  vote_status: string | null;
 }
 
 export interface SweepUnitStats {
@@ -58,7 +60,16 @@ export interface SweepPhaseStats {
   pending_count: number;
 }
 
+export interface Round {
+  id: number;
+  name: string;
+  status: string;
+  year: number;
+  round_code: string;
+}
+
 export interface SweepOverviewResponse {
+  round: Round | null;
   phases: SweepPhaseStats[];
 }
 
