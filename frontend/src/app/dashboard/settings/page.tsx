@@ -119,13 +119,16 @@ export default function SettingsPage() {
     modules: string[];
   }>({ actions: [], modules: [] });
 
-  // 检查是否是超级管理员
+  // 检查是否是超级管理员或小区管理员
   const isSuperAdmin = user?.role === 'super_admin';
+  const isAdmin = user?.role === 'super_admin' || user?.role === 'community_admin';
 
   useEffect(() => {
-    if (activeTab === 'users' && isSuperAdmin) {
+    if (activeTab === 'users' && isAdmin) {
       loadUsers();
-      loadCommunities();
+      if (isSuperAdmin) {
+        loadCommunities();
+      }
     }
     if (activeTab === 'logs' && isSuperAdmin) {
       loadLogs();
@@ -259,8 +262,15 @@ export default function SettingsPage() {
       }
     }
 
-    // 非超级管理员必须选择小区
-    if (userForm.role !== 'super_admin' && !userForm.communityId) {
+    // 确定最终的角色和小区ID
+    // 小区管理员只能创建普通用户，且自动使用自己的小区
+    const finalRole = isSuperAdmin ? userForm.role : 'community_user';
+    const finalCommunityId = isSuperAdmin
+      ? (finalRole !== 'super_admin' ? userForm.communityId : null)
+      : user?.communityId;
+
+    // 超级管理员创建非超级管理员用户时必须选择小区
+    if (isSuperAdmin && finalRole !== 'super_admin' && !finalCommunityId) {
       setUserFormError('请选择所属小区');
       return;
     }
@@ -268,25 +278,25 @@ export default function SettingsPage() {
     try {
       setUserFormLoading(true);
       let communityIdValue: number | null = null;
-      if (userForm.role !== 'super_admin' && userForm.communityId) {
-        communityIdValue = typeof userForm.communityId === 'number'
-          ? userForm.communityId
-          : parseInt(String(userForm.communityId), 10);
+      if (finalCommunityId) {
+        communityIdValue = typeof finalCommunityId === 'number'
+          ? finalCommunityId
+          : parseInt(String(finalCommunityId), 10);
       }
 
       if (editingUser) {
         await authApi.updateUser(editingUser.id, {
           name: userForm.name,
-          role: userForm.role,
+          role: isSuperAdmin ? userForm.role : undefined, // 小区管理员不能修改角色
           password: userForm.password || undefined,
-          communityId: communityIdValue,
+          communityId: isSuperAdmin ? communityIdValue : undefined, // 小区管理员不能修改小区
         });
       } else {
         await authApi.createUser({
           username: userForm.username,
           password: userForm.password,
           name: userForm.name || userForm.username,
-          role: userForm.role,
+          role: finalRole,
           communityId: communityIdValue,
         });
       }
@@ -373,33 +383,33 @@ export default function SettingsPage() {
               <Lock className="w-5 h-5" />
               <span className="font-medium">修改密码</span>
             </button>
+            {isAdmin && (
+              <button
+                onClick={() => setActiveTab('users')}
+                className={cn(
+                  'w-full flex items-center gap-3 px-4 py-3.5 text-left transition-all duration-200',
+                  activeTab === 'users'
+                    ? 'bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-600 border-l-4 border-blue-500'
+                    : 'hover:bg-slate-50 text-slate-600'
+                )}
+              >
+                <Users className="w-5 h-5" />
+                <span className="font-medium">用户管理</span>
+              </button>
+            )}
             {isSuperAdmin && (
-              <>
-                <button
-                  onClick={() => setActiveTab('users')}
-                  className={cn(
-                    'w-full flex items-center gap-3 px-4 py-3.5 text-left transition-all duration-200',
-                    activeTab === 'users'
-                      ? 'bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-600 border-l-4 border-blue-500'
-                      : 'hover:bg-slate-50 text-slate-600'
-                  )}
-                >
-                  <Users className="w-5 h-5" />
-                  <span className="font-medium">用户管理</span>
-                </button>
-                <button
-                  onClick={() => setActiveTab('logs')}
-                  className={cn(
-                    'w-full flex items-center gap-3 px-4 py-3.5 text-left transition-all duration-200',
-                    activeTab === 'logs'
-                      ? 'bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-600 border-l-4 border-blue-500'
-                      : 'hover:bg-slate-50 text-slate-600'
-                  )}
-                >
-                  <ClipboardList className="w-5 h-5" />
-                  <span className="font-medium">操作日志</span>
-                </button>
-              </>
+              <button
+                onClick={() => setActiveTab('logs')}
+                className={cn(
+                  'w-full flex items-center gap-3 px-4 py-3.5 text-left transition-all duration-200',
+                  activeTab === 'logs'
+                    ? 'bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-600 border-l-4 border-blue-500'
+                    : 'hover:bg-slate-50 text-slate-600'
+                )}
+              >
+                <ClipboardList className="w-5 h-5" />
+                <span className="font-medium">操作日志</span>
+              </button>
             )}
           </div>
         </div>
@@ -546,7 +556,7 @@ export default function SettingsPage() {
               </div>
             )}
 
-            {activeTab === 'users' && isSuperAdmin && (
+            {activeTab === 'users' && isAdmin && (
               <div className="p-6 space-y-6">
                 <div className="flex items-center justify-between pb-4 border-b border-slate-100">
                   <div className="flex items-center gap-3">
@@ -861,22 +871,38 @@ export default function SettingsPage() {
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  角色 <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={userForm.role}
-                  onChange={(e) => setUserForm({ ...userForm, role: e.target.value, communityId: e.target.value === 'super_admin' ? '' : userForm.communityId })}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer"
-                >
-                  <option value="super_admin">超级管理员</option>
-                  <option value="community_admin">小区管理员</option>
-                  <option value="community_user">普通用户</option>
-                </select>
-              </div>
+              {/* 超级管理员可以选择任意角色，小区管理员只能创建普通用户 */}
+              {isSuperAdmin ? (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    角色 <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={userForm.role}
+                    onChange={(e) => setUserForm({ ...userForm, role: e.target.value, communityId: e.target.value === 'super_admin' ? '' : userForm.communityId })}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer"
+                  >
+                    <option value="super_admin">超级管理员</option>
+                    <option value="community_admin">小区管理员</option>
+                    <option value="community_user">普通用户</option>
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    角色
+                  </label>
+                  <input
+                    type="text"
+                    value="普通用户"
+                    disabled
+                    className="w-full px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-slate-500"
+                  />
+                </div>
+              )}
 
-              {userForm.role !== 'super_admin' && (
+              {/* 超级管理员可以选择小区，小区管理员自动使用自己的小区 */}
+              {isSuperAdmin && userForm.role !== 'super_admin' && (
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
                     所属小区 <span className="text-red-500">*</span>
@@ -891,6 +917,19 @@ export default function SettingsPage() {
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
+                </div>
+              )}
+              {!isSuperAdmin && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    所属小区
+                  </label>
+                  <input
+                    type="text"
+                    value={user?.communityName || ''}
+                    disabled
+                    className="w-full px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-slate-500"
+                  />
                 </div>
               )}
 

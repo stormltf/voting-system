@@ -138,16 +138,26 @@ router.put('/password', authMiddleware, async (req, res) => {
   }
 });
 
-// 获取用户列表（仅超级管理员）
-router.get('/users', authMiddleware, superAdminMiddleware, async (req, res) => {
+// 获取用户列表（超级管理员看所有，小区管理员看本小区）
+router.get('/users', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const [users] = await pool.query(
-      `SELECT u.id, u.username, u.name, u.role, u.community_id, u.created_at,
-              c.name as community_name
-       FROM users u
-       LEFT JOIN communities c ON u.community_id = c.id
-       ORDER BY u.created_at DESC`
-    );
+    let query = `
+      SELECT u.id, u.username, u.name, u.role, u.community_id, u.created_at,
+             c.name as community_name
+      FROM users u
+      LEFT JOIN communities c ON u.community_id = c.id
+    `;
+    const params = [];
+
+    // 小区管理员只能看本小区用户
+    if (!isSuperAdmin(req.user)) {
+      query += ' WHERE u.community_id = ?';
+      params.push(req.user.communityId);
+    }
+
+    query += ' ORDER BY u.created_at DESC';
+
+    const [users] = await pool.query(query, params);
 
     res.json(users.map(user => ({
       id: user.id,
@@ -164,8 +174,8 @@ router.get('/users', authMiddleware, superAdminMiddleware, async (req, res) => {
   }
 });
 
-// 创建用户（仅超级管理员）
-router.post('/users', authMiddleware, superAdminMiddleware, async (req, res) => {
+// 创建用户（超级管理员可创建任意用户，小区管理员只能创建本小区普通用户）
+router.post('/users', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { username, password, name, role, communityId } = req.body;
 
@@ -180,13 +190,29 @@ router.post('/users', authMiddleware, superAdminMiddleware, async (req, res) => 
       return res.status(400).json({ error: '无效的角色类型' });
     }
 
-    // 非超级管理员必须指定小区
-    if (userRole !== ROLES.SUPER_ADMIN && !communityId) {
-      return res.status(400).json({ error: '小区管理员和普通用户必须指定所属小区' });
+    // 小区管理员只能创建本小区的普通用户
+    if (!isSuperAdmin(req.user)) {
+      if (userRole !== ROLES.COMMUNITY_USER) {
+        return res.status(403).json({ error: '小区管理员只能创建普通用户' });
+      }
+      // 小区管理员创建的用户必须属于自己的小区
+      if (communityId && communityId !== req.user.communityId) {
+        return res.status(403).json({ error: '只能创建本小区的用户' });
+      }
     }
 
-    // 超级管理员不能指定小区
-    const finalCommunityId = userRole === ROLES.SUPER_ADMIN ? null : communityId;
+    // 非超级管理员必须指定小区
+    if (userRole !== ROLES.SUPER_ADMIN && !communityId) {
+      // 如果是小区管理员创建用户，自动使用自己的小区
+      if (!isSuperAdmin(req.user)) {
+        var finalCommunityId = req.user.communityId;
+      } else {
+        return res.status(400).json({ error: '小区管理员和普通用户必须指定所属小区' });
+      }
+    } else {
+      // 超级管理员不能指定小区
+      var finalCommunityId = userRole === ROLES.SUPER_ADMIN ? null : communityId;
+    }
 
     // 验证小区是否存在
     if (finalCommunityId) {
@@ -227,8 +253,8 @@ router.post('/users', authMiddleware, superAdminMiddleware, async (req, res) => 
   }
 });
 
-// 更新用户（仅超级管理员）
-router.put('/users/:id', authMiddleware, superAdminMiddleware, async (req, res) => {
+// 更新用户（超级管理员可更新任意用户，小区管理员只能更新本小区普通用户）
+router.put('/users/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const { name, role, password, communityId } = req.body;
@@ -238,6 +264,33 @@ router.put('/users/:id', authMiddleware, superAdminMiddleware, async (req, res) 
       return res.status(400).json({ error: '不能修改自己的角色' });
     }
 
+    // 获取当前用户信息
+    const [existingUsers] = await pool.query('SELECT * FROM users WHERE id = ?', [id]);
+    if (existingUsers.length === 0) {
+      return res.status(404).json({ error: '用户不存在' });
+    }
+    const existingUser = existingUsers[0];
+
+    // 小区管理员权限检查
+    if (!isSuperAdmin(req.user)) {
+      // 只能修改本小区用户
+      if (existingUser.community_id !== req.user.communityId) {
+        return res.status(403).json({ error: '只能修改本小区的用户' });
+      }
+      // 不能修改管理员
+      if (existingUser.role !== ROLES.COMMUNITY_USER) {
+        return res.status(403).json({ error: '无权修改管理员用户' });
+      }
+      // 不能修改角色
+      if (role && role !== ROLES.COMMUNITY_USER) {
+        return res.status(403).json({ error: '小区管理员不能修改用户角色' });
+      }
+      // 不能修改小区
+      if (communityId && communityId !== req.user.communityId) {
+        return res.status(403).json({ error: '不能将用户转移到其他小区' });
+      }
+    }
+
     // 验证角色
     if (role) {
       const validRoles = [ROLES.SUPER_ADMIN, ROLES.COMMUNITY_ADMIN, ROLES.COMMUNITY_USER];
@@ -245,13 +298,6 @@ router.put('/users/:id', authMiddleware, superAdminMiddleware, async (req, res) 
         return res.status(400).json({ error: '无效的角色类型' });
       }
     }
-
-    // 获取当前用户信息
-    const [existingUsers] = await pool.query('SELECT * FROM users WHERE id = ?', [id]);
-    if (existingUsers.length === 0) {
-      return res.status(404).json({ error: '用户不存在' });
-    }
-    const existingUser = existingUsers[0];
 
     const finalRole = role || existingUser.role;
 
@@ -306,8 +352,8 @@ router.put('/users/:id', authMiddleware, superAdminMiddleware, async (req, res) 
   }
 });
 
-// 删除用户（仅超级管理员）
-router.delete('/users/:id', authMiddleware, superAdminMiddleware, async (req, res) => {
+// 删除用户（超级管理员可删除任意用户，小区管理员只能删除本小区普通用户）
+router.delete('/users/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -316,12 +362,24 @@ router.delete('/users/:id', authMiddleware, superAdminMiddleware, async (req, re
       return res.status(400).json({ error: '不能删除自己' });
     }
 
-    // 获取要删除的用户信息（用于日志）
-    const [users] = await pool.query('SELECT username, name FROM users WHERE id = ?', [id]);
+    // 获取要删除的用户信息
+    const [users] = await pool.query('SELECT username, name, role, community_id FROM users WHERE id = ?', [id]);
     const deletedUser = users[0];
 
     if (!deletedUser) {
       return res.status(404).json({ error: '用户不存在' });
+    }
+
+    // 小区管理员权限检查
+    if (!isSuperAdmin(req.user)) {
+      // 只能删除本小区用户
+      if (deletedUser.community_id !== req.user.communityId) {
+        return res.status(403).json({ error: '只能删除本小区的用户' });
+      }
+      // 不能删除管理员
+      if (deletedUser.role !== ROLES.COMMUNITY_USER) {
+        return res.status(403).json({ error: '无权删除管理员用户' });
+      }
     }
 
     await pool.query('DELETE FROM users WHERE id = ?', [id]);
