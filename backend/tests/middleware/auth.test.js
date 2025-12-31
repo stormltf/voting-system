@@ -1,5 +1,14 @@
 const jwt = require('jsonwebtoken');
-const { authMiddleware, adminMiddleware, generateToken } = require('../../src/middleware/auth');
+const {
+  authMiddleware,
+  superAdminMiddleware,
+  adminMiddleware,
+  generateToken,
+  ROLES,
+  isSuperAdmin,
+  canAccessCommunity,
+  canManageCommunity
+} = require('../../src/middleware/auth');
 
 describe('Auth Middleware', () => {
   let mockReq;
@@ -15,6 +24,14 @@ describe('Auth Middleware', () => {
       json: jest.fn().mockReturnThis(),
     };
     nextFunction = jest.fn();
+  });
+
+  describe('ROLES 常量', () => {
+    it('应该定义三种角色', () => {
+      expect(ROLES.SUPER_ADMIN).toBe('super_admin');
+      expect(ROLES.COMMUNITY_ADMIN).toBe('community_admin');
+      expect(ROLES.COMMUNITY_USER).toBe('community_user');
+    });
   });
 
   describe('authMiddleware', () => {
@@ -45,7 +62,7 @@ describe('Auth Middleware', () => {
     });
 
     it('应该接受有效的 token 并将用户信息附加到 req', () => {
-      const user = { id: 1, username: 'testuser', role: 'admin' };
+      const user = { id: 1, username: 'testuser', role: ROLES.SUPER_ADMIN, communityId: null };
       const token = generateToken(user);
       mockReq.headers.authorization = `Bearer ${token}`;
 
@@ -58,12 +75,22 @@ describe('Auth Middleware', () => {
       expect(mockReq.user.role).toBe(user.role);
     });
 
+    it('应该正确传递 communityId', () => {
+      // generateToken 使用 community_id (数据库字段名)
+      const user = { id: 2, username: 'admin1', role: ROLES.COMMUNITY_ADMIN, community_id: 5 };
+      const token = generateToken(user);
+      mockReq.headers.authorization = `Bearer ${token}`;
+
+      authMiddleware(mockReq, mockRes, nextFunction);
+
+      expect(mockReq.user.communityId).toBe(5);
+    });
+
     it('应该拒绝过期的 token', () => {
-      // 创建一个已过期的 token
       const expiredToken = jwt.sign(
-        { id: 1, username: 'test', role: 'admin' },
+        { id: 1, username: 'test', role: ROLES.SUPER_ADMIN },
         process.env.JWT_SECRET || 'test-secret-key',
-        { expiresIn: '-1s' } // 已过期
+        { expiresIn: '-1s' }
       );
       mockReq.headers.authorization = `Bearer ${expiredToken}`;
 
@@ -74,17 +101,52 @@ describe('Auth Middleware', () => {
     });
   });
 
+  describe('superAdminMiddleware', () => {
+    it('应该允许超级管理员通过', () => {
+      mockReq.user = { id: 1, role: ROLES.SUPER_ADMIN };
+
+      superAdminMiddleware(mockReq, mockRes, nextFunction);
+
+      expect(nextFunction).toHaveBeenCalled();
+    });
+
+    it('应该拒绝小区管理员', () => {
+      mockReq.user = { id: 2, role: ROLES.COMMUNITY_ADMIN, communityId: 1 };
+
+      superAdminMiddleware(mockReq, mockRes, nextFunction);
+
+      expect(mockRes.status).toHaveBeenCalledWith(403);
+      expect(mockRes.json).toHaveBeenCalledWith({ error: '需要超级管理员权限' });
+    });
+
+    it('应该拒绝普通用户', () => {
+      mockReq.user = { id: 3, role: ROLES.COMMUNITY_USER, communityId: 1 };
+
+      superAdminMiddleware(mockReq, mockRes, nextFunction);
+
+      expect(mockRes.status).toHaveBeenCalledWith(403);
+    });
+  });
+
   describe('adminMiddleware', () => {
-    it('应该允许管理员通过', () => {
-      mockReq.user = { id: 1, role: 'admin' };
+    it('应该允许超级管理员通过', () => {
+      mockReq.user = { id: 1, role: ROLES.SUPER_ADMIN };
 
       adminMiddleware(mockReq, mockRes, nextFunction);
 
       expect(nextFunction).toHaveBeenCalled();
     });
 
-    it('应该拒绝非管理员用户', () => {
-      mockReq.user = { id: 2, role: 'staff' };
+    it('应该允许小区管理员通过', () => {
+      mockReq.user = { id: 2, role: ROLES.COMMUNITY_ADMIN, communityId: 1 };
+
+      adminMiddleware(mockReq, mockRes, nextFunction);
+
+      expect(nextFunction).toHaveBeenCalled();
+    });
+
+    it('应该拒绝普通用户', () => {
+      mockReq.user = { id: 3, role: ROLES.COMMUNITY_USER, communityId: 1 };
 
       adminMiddleware(mockReq, mockRes, nextFunction);
 
@@ -93,18 +155,77 @@ describe('Auth Middleware', () => {
     });
   });
 
+  describe('isSuperAdmin', () => {
+    it('超级管理员应返回 true', () => {
+      const user = { role: ROLES.SUPER_ADMIN };
+      expect(isSuperAdmin(user)).toBe(true);
+    });
+
+    it('小区管理员应返回 false', () => {
+      const user = { role: ROLES.COMMUNITY_ADMIN };
+      expect(isSuperAdmin(user)).toBe(false);
+    });
+
+    it('普通用户应返回 false', () => {
+      const user = { role: ROLES.COMMUNITY_USER };
+      expect(isSuperAdmin(user)).toBe(false);
+    });
+  });
+
+  describe('canAccessCommunity', () => {
+    it('超级管理员可以访问任何小区', () => {
+      const user = { role: ROLES.SUPER_ADMIN, communityId: null };
+      expect(canAccessCommunity(user, 1)).toBe(true);
+      expect(canAccessCommunity(user, 2)).toBe(true);
+      expect(canAccessCommunity(user, 999)).toBe(true);
+    });
+
+    it('小区管理员只能访问自己的小区', () => {
+      const user = { role: ROLES.COMMUNITY_ADMIN, communityId: 1 };
+      expect(canAccessCommunity(user, 1)).toBe(true);
+      expect(canAccessCommunity(user, 2)).toBe(false);
+    });
+
+    it('普通用户只能访问自己的小区', () => {
+      const user = { role: ROLES.COMMUNITY_USER, communityId: 3 };
+      expect(canAccessCommunity(user, 3)).toBe(true);
+      expect(canAccessCommunity(user, 1)).toBe(false);
+    });
+  });
+
+  describe('canManageCommunity', () => {
+    it('超级管理员可以管理任何小区', () => {
+      const user = { role: ROLES.SUPER_ADMIN, communityId: null };
+      expect(canManageCommunity(user, 1)).toBe(true);
+      expect(canManageCommunity(user, 999)).toBe(true);
+    });
+
+    it('小区管理员只能管理自己的小区', () => {
+      const user = { role: ROLES.COMMUNITY_ADMIN, communityId: 1 };
+      expect(canManageCommunity(user, 1)).toBe(true);
+      expect(canManageCommunity(user, 2)).toBe(false);
+    });
+
+    it('普通用户不能管理任何小区', () => {
+      const user = { role: ROLES.COMMUNITY_USER, communityId: 1 };
+      expect(canManageCommunity(user, 1)).toBe(false);
+      expect(canManageCommunity(user, 2)).toBe(false);
+    });
+  });
+
   describe('generateToken', () => {
     it('应该生成有效的 JWT token', () => {
-      const user = { id: 1, username: 'testuser', role: 'admin' };
+      const user = { id: 1, username: 'testuser', role: ROLES.SUPER_ADMIN, communityId: null };
       const token = generateToken(user);
 
       expect(token).toBeDefined();
       expect(typeof token).toBe('string');
-      expect(token.split('.')).toHaveLength(3); // JWT 格式: header.payload.signature
+      expect(token.split('.')).toHaveLength(3);
     });
 
-    it('生成的 token 应该可以被验证', () => {
-      const user = { id: 1, username: 'testuser', role: 'admin' };
+    it('生成的 token 应该包含 communityId', () => {
+      // generateToken 使用 community_id (数据库字段名)，生成的 token 使用 communityId (驼峰)
+      const user = { id: 2, username: 'admin1', role: ROLES.COMMUNITY_ADMIN, community_id: 5 };
       const token = generateToken(user);
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'test-secret-key');
@@ -112,6 +233,16 @@ describe('Auth Middleware', () => {
       expect(decoded.id).toBe(user.id);
       expect(decoded.username).toBe(user.username);
       expect(decoded.role).toBe(user.role);
+      expect(decoded.communityId).toBe(5);
+    });
+
+    it('超级管理员的 communityId 应为 null', () => {
+      const user = { id: 1, username: 'superadmin', role: ROLES.SUPER_ADMIN, community_id: null };
+      const token = generateToken(user);
+
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'test-secret-key');
+
+      expect(decoded.communityId).toBeNull();
     });
   });
 });

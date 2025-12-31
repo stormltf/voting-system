@@ -5,7 +5,7 @@ const bcrypt = require('bcryptjs');
 jest.mock('../../src/models/db', () => require('../mocks/db'));
 
 const { pool } = require('../../src/models/db');
-const { generateToken } = require('../../src/middleware/auth');
+const { generateToken, ROLES } = require('../../src/middleware/auth');
 const { app } = require('../../src/index');
 
 describe('Auth Routes', () => {
@@ -37,7 +37,7 @@ describe('Auth Routes', () => {
     it('应该拒绝错误的密码', async () => {
       const hashedPassword = await bcrypt.hash('correctpassword', 10);
       pool.query.mockResolvedValueOnce([[
-        { id: 1, username: 'testuser', password: hashedPassword, role: 'admin', name: 'Test User' }
+        { id: 1, username: 'testuser', password: hashedPassword, role: ROLES.SUPER_ADMIN, name: 'Test User', community_id: null }
       ]]);
 
       const response = await request(app)
@@ -51,7 +51,7 @@ describe('Auth Routes', () => {
     it('应该成功登录并返回 token', async () => {
       const hashedPassword = await bcrypt.hash('password123', 10);
       pool.query.mockResolvedValueOnce([[
-        { id: 1, username: 'admin', password: hashedPassword, role: 'admin', name: 'Admin User' }
+        { id: 1, username: 'admin', password: hashedPassword, role: ROLES.SUPER_ADMIN, name: 'Admin User', community_id: null }
       ]]);
 
       const response = await request(app)
@@ -64,6 +64,21 @@ describe('Auth Routes', () => {
       expect(response.body.user.username).toBe('admin');
       expect(response.body.user.password).toBeUndefined(); // 不应返回密码
     });
+
+    it('小区管理员登录应返回 communityId', async () => {
+      const hashedPassword = await bcrypt.hash('password123', 10);
+      pool.query.mockResolvedValueOnce([[
+        { id: 2, username: 'cadmin', password: hashedPassword, role: ROLES.COMMUNITY_ADMIN, name: 'Community Admin', community_id: 5 }
+      ]]);
+
+      const response = await request(app)
+        .post('/api/auth/login')
+        .send({ username: 'cadmin', password: 'password123' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.user.communityId).toBe(5);
+      expect(response.body.user.role).toBe(ROLES.COMMUNITY_ADMIN);
+    });
   });
 
   describe('GET /api/auth/me', () => {
@@ -74,9 +89,9 @@ describe('Auth Routes', () => {
     });
 
     it('应该返回当前用户信息', async () => {
-      const token = generateToken({ id: 1, username: 'admin', role: 'admin' });
+      const token = generateToken({ id: 1, username: 'admin', role: ROLES.SUPER_ADMIN, community_id: null });
       pool.query.mockResolvedValueOnce([[
-        { id: 1, username: 'admin', name: 'Admin User', role: 'admin', created_at: new Date() }
+        { id: 1, username: 'admin', name: 'Admin User', role: ROLES.SUPER_ADMIN, community_id: null, created_at: new Date() }
       ]]);
 
       const response = await request(app)
@@ -88,7 +103,7 @@ describe('Auth Routes', () => {
     });
 
     it('应该处理用户不存在的情况', async () => {
-      const token = generateToken({ id: 999, username: 'ghost', role: 'admin' });
+      const token = generateToken({ id: 999, username: 'ghost', role: ROLES.SUPER_ADMIN, community_id: null });
       pool.query.mockResolvedValueOnce([[]]);
 
       const response = await request(app)
@@ -102,7 +117,7 @@ describe('Auth Routes', () => {
 
   describe('PUT /api/auth/password', () => {
     it('应该拒绝缺少旧密码或新密码', async () => {
-      const token = generateToken({ id: 1, username: 'admin', role: 'admin' });
+      const token = generateToken({ id: 1, username: 'admin', role: ROLES.SUPER_ADMIN, community_id: null });
 
       const response = await request(app)
         .put('/api/auth/password')
@@ -114,7 +129,7 @@ describe('Auth Routes', () => {
     });
 
     it('应该拒绝错误的旧密码', async () => {
-      const token = generateToken({ id: 1, username: 'admin', role: 'admin' });
+      const token = generateToken({ id: 1, username: 'admin', role: ROLES.SUPER_ADMIN, community_id: null });
       const hashedPassword = await bcrypt.hash('correctpassword', 10);
       pool.query.mockResolvedValueOnce([[
         { id: 1, username: 'admin', password: hashedPassword }
@@ -130,7 +145,7 @@ describe('Auth Routes', () => {
     });
 
     it('应该成功修改密码', async () => {
-      const token = generateToken({ id: 1, username: 'admin', role: 'admin' });
+      const token = generateToken({ id: 1, username: 'admin', role: ROLES.SUPER_ADMIN, community_id: null });
       const hashedPassword = await bcrypt.hash('oldpassword', 10);
       pool.query
         .mockResolvedValueOnce([[{ id: 1, username: 'admin', password: hashedPassword }]])
@@ -147,8 +162,9 @@ describe('Auth Routes', () => {
   });
 
   describe('POST /api/auth/users', () => {
-    it('应该拒绝非管理员创建用户', async () => {
-      const token = generateToken({ id: 2, username: 'staff', role: 'staff' });
+    it('应该拒绝非超级管理员创建用户', async () => {
+      // 小区管理员不能创建用户，只有超级管理员可以
+      const token = generateToken({ id: 2, username: 'cadmin', role: ROLES.COMMUNITY_ADMIN, community_id: 1 });
 
       const response = await request(app)
         .post('/api/auth/users')
@@ -156,11 +172,23 @@ describe('Auth Routes', () => {
         .send({ username: 'newuser', password: 'password123' });
 
       expect(response.status).toBe(403);
-      expect(response.body.error).toBe('需要管理员权限');
+      expect(response.body.error).toBe('需要超级管理员权限');
+    });
+
+    it('普通用户不能创建用户', async () => {
+      const token = generateToken({ id: 3, username: 'user', role: ROLES.COMMUNITY_USER, community_id: 1 });
+
+      const response = await request(app)
+        .post('/api/auth/users')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ username: 'newuser', password: 'password123' });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error).toBe('需要超级管理员权限');
     });
 
     it('应该拒绝空的用户名或密码', async () => {
-      const token = generateToken({ id: 1, username: 'admin', role: 'admin' });
+      const token = generateToken({ id: 1, username: 'admin', role: ROLES.SUPER_ADMIN, community_id: null });
 
       const response = await request(app)
         .post('/api/auth/users')
@@ -171,22 +199,52 @@ describe('Auth Routes', () => {
       expect(response.body.error).toBe('用户名和密码不能为空');
     });
 
-    it('管理员应该能成功创建用户', async () => {
-      const token = generateToken({ id: 1, username: 'admin', role: 'admin' });
+    it('超级管理员应该能成功创建超级管理员用户', async () => {
+      const token = generateToken({ id: 1, username: 'admin', role: ROLES.SUPER_ADMIN, community_id: null });
       pool.query.mockResolvedValueOnce([{ insertId: 2 }]);
 
       const response = await request(app)
         .post('/api/auth/users')
         .set('Authorization', `Bearer ${token}`)
-        .send({ username: 'newuser', password: 'password123', name: 'New User' });
+        .send({ username: 'newadmin', password: 'password123', name: 'New Admin', role: ROLES.SUPER_ADMIN });
 
       expect(response.status).toBe(201);
       expect(response.body.id).toBe(2);
-      expect(response.body.username).toBe('newuser');
+      expect(response.body.username).toBe('newadmin');
+      expect(response.body.role).toBe(ROLES.SUPER_ADMIN);
+    });
+
+    it('创建小区管理员需要指定 communityId', async () => {
+      const token = generateToken({ id: 1, username: 'admin', role: ROLES.SUPER_ADMIN, community_id: null });
+
+      const response = await request(app)
+        .post('/api/auth/users')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ username: 'cadmin', password: 'password123', role: ROLES.COMMUNITY_ADMIN });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('小区管理员和普通用户必须指定所属小区');
+    });
+
+    it('超级管理员应该能创建小区管理员', async () => {
+      const token = generateToken({ id: 1, username: 'admin', role: ROLES.SUPER_ADMIN, community_id: null });
+      // 第一个查询验证小区存在
+      pool.query
+        .mockResolvedValueOnce([[{ id: 1 }]]) // 验证小区
+        .mockResolvedValueOnce([{ insertId: 3 }]); // 创建用户
+
+      const response = await request(app)
+        .post('/api/auth/users')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ username: 'cadmin', password: 'password123', name: 'Community Admin', role: ROLES.COMMUNITY_ADMIN, communityId: 1 });
+
+      expect(response.status).toBe(201);
+      expect(response.body.role).toBe(ROLES.COMMUNITY_ADMIN);
+      expect(response.body.communityId).toBe(1);
     });
 
     it('应该拒绝重复的用户名', async () => {
-      const token = generateToken({ id: 1, username: 'admin', role: 'admin' });
+      const token = generateToken({ id: 1, username: 'admin', role: ROLES.SUPER_ADMIN, community_id: null });
       const error = new Error('Duplicate entry');
       error.code = 'ER_DUP_ENTRY';
       pool.query.mockRejectedValueOnce(error);
@@ -194,7 +252,7 @@ describe('Auth Routes', () => {
       const response = await request(app)
         .post('/api/auth/users')
         .set('Authorization', `Bearer ${token}`)
-        .send({ username: 'existinguser', password: 'password123' });
+        .send({ username: 'existinguser', password: 'password123', role: ROLES.SUPER_ADMIN });
 
       expect(response.status).toBe(400);
       expect(response.body.error).toBe('用户名已存在');
