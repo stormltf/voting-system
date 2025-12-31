@@ -1,21 +1,33 @@
 'use client';
 
 import { useState } from 'react';
+import { Check } from 'lucide-react';
 import { RoomData, voteStatusConfig } from './types';
 
 interface Props {
   room: RoomData;
   onClick: () => void;
+  selectable?: boolean;
+  selected?: boolean;
+  onSelect?: (selected: boolean) => void;
 }
 
-export default function RoomCell({ room, onClick }: Props) {
+export default function RoomCell({ room, onClick, selectable, selected, onSelect }: Props) {
   const [showTooltip, setShowTooltip] = useState(false);
   const status = voteStatusConfig[room.vote_status] || voteStatusConfig.pending;
+
+  const handleClick = () => {
+    if (selectable && onSelect) {
+      onSelect(!selected);
+    } else {
+      onClick();
+    }
+  };
 
   return (
     <div className="relative">
       <button
-        onClick={onClick}
+        onClick={handleClick}
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
         className={`
@@ -24,9 +36,14 @@ export default function RoomCell({ room, onClick }: Props) {
           transition-all duration-200 cursor-pointer
           shadow-sm hover:shadow-md hover:scale-105
           ${status.bgColor} ${status.color}
+          ${selected ? 'ring-2 ring-blue-500 ring-offset-1' : ''}
         `}
       >
-        {room.room_in_floor}
+        {selectable && selected ? (
+          <Check className="w-4 h-4" />
+        ) : (
+          room.room_in_floor
+        )}
       </button>
 
       {/* 悬停提示 */}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Building2, Loader2, ChevronDown, ChevronRight, X } from 'lucide-react';
+import { Building2, Loader2, ChevronDown, ChevronRight, X, CheckSquare, Square } from 'lucide-react';
 import FloorGrid from './FloorGrid';
 import RoomEditModal from './RoomEditModal';
 import { voteApi } from '@/lib/api';
@@ -11,6 +11,7 @@ import {
   Round,
   BuildingOverviewResponse,
   PhaseStats,
+  voteStatusConfig,
 } from './types';
 
 interface Props {
@@ -37,6 +38,11 @@ export default function BuildingVoteVisualization({ communityId }: Props) {
   // UI 状态
   const [loading, setLoading] = useState(false);
   const [expandedPhases, setExpandedPhases] = useState<Set<number>>(new Set());
+
+  // 批量选择状态
+  const [batchMode, setBatchMode] = useState(false);
+  const [selectedRooms, setSelectedRooms] = useState<Set<number>>(new Set());
+  const [batchUpdating, setBatchUpdating] = useState(false);
 
   // 加载投票轮次列表
   useEffect(() => {
@@ -137,6 +143,60 @@ export default function BuildingVoteVisualization({ communityId }: Props) {
   const closeDetail = () => {
     setSelectedUnit(null);
     setRoomData(null);
+    setBatchMode(false);
+    setSelectedRooms(new Set());
+  };
+
+  // 切换批量选择模式
+  const toggleBatchMode = () => {
+    setBatchMode(!batchMode);
+    setSelectedRooms(new Set());
+  };
+
+  // 选择/取消选择房间
+  const handleSelectRoom = (ownerId: number, selected: boolean) => {
+    setSelectedRooms((prev) => {
+      const next = new Set(prev);
+      if (selected) {
+        next.add(ownerId);
+      } else {
+        next.delete(ownerId);
+      }
+      return next;
+    });
+  };
+
+  // 全选/取消全选
+  const toggleSelectAll = () => {
+    if (!roomData) return;
+    const allOwnerIds = Object.values(roomData.floors)
+      .flat()
+      .map((room) => room.owner_id);
+    if (selectedRooms.size === allOwnerIds.length) {
+      setSelectedRooms(new Set());
+    } else {
+      setSelectedRooms(new Set(allOwnerIds));
+    }
+  };
+
+  // 批量更新投票状态
+  const handleBatchUpdateVote = async (status: string) => {
+    if (selectedRooms.size === 0 || !overviewData?.round) return;
+
+    try {
+      setBatchUpdating(true);
+      await voteApi.batchUpdate({
+        round_id: overviewData.round.id,
+        owner_ids: Array.from(selectedRooms),
+        vote_status: status,
+      });
+      await loadUnitDetail();
+      setSelectedRooms(new Set());
+    } catch (error) {
+      console.error('批量更新失败:', error);
+    } finally {
+      setBatchUpdating(false);
+    }
   };
 
   // 计算投票率
@@ -318,13 +378,64 @@ export default function BuildingVoteVisualization({ communityId }: Props) {
                   <p className="text-sm text-slate-500 mt-0.5">{overviewData.round.name}</p>
                 )}
               </div>
-              <button
-                onClick={closeDetail}
-                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5 text-slate-400" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={toggleBatchMode}
+                  className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                    batchMode
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {batchMode ? '退出批量' : '批量操作'}
+                </button>
+                <button
+                  onClick={closeDetail}
+                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
             </div>
+
+            {/* 批量操作工具栏 */}
+            {batchMode && (
+              <div className="px-6 py-3 border-b border-slate-100 bg-blue-50 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={toggleSelectAll}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                  >
+                    {roomData &&
+                    selectedRooms.size === Object.values(roomData.floors).flat().length ? (
+                      <CheckSquare className="w-4 h-4 text-blue-500" />
+                    ) : (
+                      <Square className="w-4 h-4 text-slate-400" />
+                    )}
+                    全选
+                  </button>
+                  <span className="text-sm text-slate-600">
+                    已选择 <span className="font-semibold text-blue-600">{selectedRooms.size}</span> 户
+                  </span>
+                </div>
+
+                {selectedRooms.size > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-slate-500 mr-2">设为:</span>
+                    {Object.entries(voteStatusConfig).map(([key, config]) => (
+                      <button
+                        key={key}
+                        onClick={() => handleBatchUpdateVote(key)}
+                        disabled={batchUpdating}
+                        className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${config.bgColor} ${config.color} hover:opacity-80 disabled:opacity-50`}
+                      >
+                        {batchUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : config.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* 弹窗内容 */}
             <div className="flex-1 overflow-auto">
@@ -334,7 +445,13 @@ export default function BuildingVoteVisualization({ communityId }: Props) {
                   <span>加载中...</span>
                 </div>
               ) : roomData && roomData.meta.total_rooms > 0 ? (
-                <FloorGrid data={roomData} onRoomClick={setEditingRoom} />
+                <FloorGrid
+                  data={roomData}
+                  onRoomClick={setEditingRoom}
+                  selectable={batchMode}
+                  selectedRooms={selectedRooms}
+                  onSelectRoom={handleSelectRoom}
+                />
               ) : (
                 <div className="p-12 text-center text-slate-400">该单元没有房间数据</div>
               )}

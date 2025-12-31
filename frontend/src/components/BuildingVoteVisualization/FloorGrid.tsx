@@ -7,9 +7,12 @@ import { UnitRoomsResponse, RoomData } from './types';
 interface Props {
   data: UnitRoomsResponse;
   onRoomClick: (room: RoomData) => void;
+  selectable?: boolean;
+  selectedRooms?: Set<number>;
+  onSelectRoom?: (ownerId: number, selected: boolean) => void;
 }
 
-export default function FloorGrid({ data, onRoomClick }: Props) {
+export default function FloorGrid({ data, onRoomClick, selectable, selectedRooms, onSelectRoom }: Props) {
   const { floors, meta } = data;
 
   // 从高到低排列楼层
@@ -76,6 +79,9 @@ export default function FloorGrid({ data, onRoomClick }: Props) {
                     key={room.owner_id}
                     room={room}
                     onClick={() => onRoomClick(room)}
+                    selectable={selectable}
+                    selected={selectedRooms?.has(room.owner_id)}
+                    onSelect={(selected) => onSelectRoom?.(room.owner_id, selected)}
                   />
                 ))}
             </div>
