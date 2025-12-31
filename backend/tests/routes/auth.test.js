@@ -162,17 +162,17 @@ describe('Auth Routes', () => {
   });
 
   describe('POST /api/auth/users', () => {
-    it('应该拒绝非超级管理员创建用户', async () => {
-      // 小区管理员不能创建用户，只有超级管理员可以
+    it('小区管理员只能创建普通用户', async () => {
+      // 小区管理员尝试创建管理员用户应该被拒绝
       const token = generateToken({ id: 2, username: 'cadmin', role: ROLES.COMMUNITY_ADMIN, community_id: 1 });
 
       const response = await request(app)
         .post('/api/auth/users')
         .set('Authorization', `Bearer ${token}`)
-        .send({ username: 'newuser', password: 'password123' });
+        .send({ username: 'newadmin', password: 'password123', role: ROLES.COMMUNITY_ADMIN });
 
       expect(response.status).toBe(403);
-      expect(response.body.error).toBe('需要超级管理员权限');
+      expect(response.body.error).toBe('小区管理员只能创建普通用户');
     });
 
     it('普通用户不能创建用户', async () => {
@@ -184,7 +184,7 @@ describe('Auth Routes', () => {
         .send({ username: 'newuser', password: 'password123' });
 
       expect(response.status).toBe(403);
-      expect(response.body.error).toBe('需要超级管理员权限');
+      expect(response.body.error).toBe('需要管理员权限');
     });
 
     it('应该拒绝空的用户名或密码', async () => {

@@ -4,14 +4,15 @@ const request = require('supertest');
 jest.mock('../../src/models/db', () => require('../mocks/db'));
 
 const { pool } = require('../../src/models/db');
-const { generateToken } = require('../../src/middleware/auth');
+const { generateToken, ROLES } = require('../../src/middleware/auth');
 const { app } = require('../../src/index');
 
 describe('Communities Routes', () => {
   let authToken;
 
   beforeAll(() => {
-    authToken = generateToken({ id: 1, username: 'admin', role: 'admin' });
+    // 使用 super_admin 角色确保有所有权限
+    authToken = generateToken({ id: 1, username: 'admin', role: ROLES.SUPER_ADMIN, community_id: null });
   });
 
   beforeEach(() => {
@@ -124,7 +125,12 @@ describe('Communities Routes', () => {
 
   describe('DELETE /api/communities/:id', () => {
     it('应该成功删除小区', async () => {
+      // 第一个查询：检查小区是否存在
+      pool.query.mockResolvedValueOnce([[{ id: 1, name: '测试小区' }]]);
+      // 第二个查询：删除小区
       pool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
+      // 第三个查询：记录日志
+      pool.query.mockResolvedValueOnce([{ insertId: 1 }]);
 
       const response = await request(app)
         .delete('/api/communities/1')
@@ -135,7 +141,8 @@ describe('Communities Routes', () => {
     });
 
     it('应该返回 404 如果小区不存在', async () => {
-      pool.query.mockResolvedValueOnce([{ affectedRows: 0 }]);
+      // 第一个查询：小区不存在
+      pool.query.mockResolvedValueOnce([[]]);
 
       const response = await request(app)
         .delete('/api/communities/999')
@@ -204,7 +211,12 @@ describe('Communities Routes', () => {
 
     describe('PUT /api/communities/phases/:id', () => {
       it('应该成功更新期数', async () => {
+        // 第一个查询：获取期数信息
+        pool.query.mockResolvedValueOnce([[{ id: 1, community_id: 1 }]]);
+        // 第二个查询：更新期数
         pool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
+        // 第三个查询：记录日志
+        pool.query.mockResolvedValueOnce([{ insertId: 1 }]);
 
         const response = await request(app)
           .put('/api/communities/phases/1')
@@ -216,7 +228,8 @@ describe('Communities Routes', () => {
       });
 
       it('应该返回 404 如果期数不存在', async () => {
-        pool.query.mockResolvedValueOnce([{ affectedRows: 0 }]);
+        // 第一个查询：期数不存在
+        pool.query.mockResolvedValueOnce([[]]);
 
         const response = await request(app)
           .put('/api/communities/phases/999')
@@ -229,7 +242,12 @@ describe('Communities Routes', () => {
 
     describe('DELETE /api/communities/phases/:id', () => {
       it('应该成功删除期数', async () => {
+        // 第一个查询：获取期数信息
+        pool.query.mockResolvedValueOnce([[{ id: 1, name: '一期', code: 'P1', community_id: 1 }]]);
+        // 第二个查询：删除期数
         pool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
+        // 第三个查询：记录日志
+        pool.query.mockResolvedValueOnce([{ insertId: 1 }]);
 
         const response = await request(app)
           .delete('/api/communities/phases/1')
