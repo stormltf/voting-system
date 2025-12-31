@@ -1,7 +1,7 @@
 # 业主大会投票管理系统
 
-[![CI](https://github.com/YOUR_USERNAME/voting-system/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/voting-system/actions/workflows/ci.yml)
-[![Docker Build](https://github.com/YOUR_USERNAME/voting-system/actions/workflows/docker-build.yml/badge.svg)](https://github.com/YOUR_USERNAME/voting-system/actions/workflows/docker-build.yml)
+[![CI](https://github.com/stormltf/voting-system/actions/workflows/ci.yml/badge.svg)](https://github.com/stormltf/voting-system/actions/workflows/ci.yml)
+[![Docker Build](https://github.com/stormltf/voting-system/actions/workflows/docker-build.yml/badge.svg)](https://github.com/stormltf/voting-system/actions/workflows/docker-build.yml)
 
 一个用于管理小区业主大会投票的全栈应用系统，支持多小区、多期数、多轮投票的完整管理流程。
 
@@ -32,7 +32,8 @@
 - **多期数支持**: 每个小区可包含多个期数（如一期、二期）
 - **业主信息管理**: 完整的 CRUD 操作，支持 Excel 批量导入
 - **多轮投票管理**: 支持创建多个投票轮次，独立统计
-- **投票状态追踪**: 跟踪每个业主的投票状态（未投票/已投票/拒绝/现场/视频/扫楼）
+- **投票状态追踪**: 跟踪每个业主的投票状态（未投票/已投票/拒绝/现场/视频）
+- **扫楼状态管理**: 独立的扫楼进度追踪（待扫楼/已联系/已完成/无法联系）
 - **投票统计分析**:
   - 按户数统计投票率
   - 按面积加权统计投票率
@@ -43,8 +44,13 @@
 
 ### 用户系统
 - JWT 身份认证
-- 角色权限控制（admin/staff）
+- 三级角色权限控制：
+  - **super_admin（超级管理员）**: 管理所有小区和用户
+  - **community_admin（小区管理员）**: 管理本小区数据
+  - **community_user（小区用户）**: 仅查看本小区数据
+- 小区级别数据隔离
 - 密码安全加密存储
+- 操作日志审计
 
 ## 快速开始
 
@@ -139,10 +145,11 @@ voting-system/
 │   ├── src/
 │   │   ├── index.js           # 应用入口
 │   │   ├── routes/            # API 路由
-│   │   │   ├── auth.js        # 认证路由
+│   │   │   ├── auth.js        # 认证路由（含用户管理）
 │   │   │   ├── communities.js # 小区和期数管理
 │   │   │   ├── owners.js      # 业主管理
-│   │   │   └── votes.js       # 投票管理
+│   │   │   ├── votes.js       # 投票和扫楼管理
+│   │   │   └── logs.js        # 操作日志
 │   │   ├── middleware/        # 中间件
 │   │   │   └── auth.js        # JWT 验证
 │   │   └── models/            # 数据库模型
@@ -167,7 +174,9 @@ voting-system/
 │   │   ├── components/        # 可复用组件
 │   │   │   ├── StatsCard.tsx  # 统计卡片
 │   │   │   ├── DataTable.tsx  # 数据表格
-│   │   │   └── Sidebar.tsx    # 侧边导航
+│   │   │   ├── Sidebar.tsx    # 侧边导航
+│   │   │   ├── BuildingVoteVisualization/  # 楼栋投票可视化
+│   │   │   └── SweepStatusVisualization/   # 扫楼状态可视化
 │   │   ├── contexts/          # React Context
 │   │   │   └── AuthContext.tsx
 │   │   └── lib/               # 工具函数
@@ -182,8 +191,8 @@ voting-system/
 ├── database/                   # 数据库脚本
 │   ├── schema.sql             # 数据库结构 (MySQL)
 │   ├── schema-tidb.sql        # TiDB Cloud 兼容版本
-│   ├── import_data.sql        # 业主数据导入
-│   └── import_votes.sql       # 投票数据导入
+│   ├── init/                  # Docker 初始化脚本
+│   └── migrations/            # 数据库迁移脚本
 │
 └── render.yaml                 # Render 部署配置
 ```
@@ -204,12 +213,13 @@ communities (小区)
 
 | 表名 | 说明 | 字段数 | 关键约束 |
 |------|------|--------|----------|
-| `users` | 系统用户 | 6 | username 唯一 |
+| `users` | 系统用户 | 8 | username 唯一，community_id 外键 |
 | `communities` | 小区 | 5 | - |
 | `phases` | 期数 | 6 | (community_id, code) 联合唯一 |
 | `owners` | 业主 | 17 | (phase_id, room_number) 联合唯一 |
-| `vote_rounds` | 投票轮次 | 9 | - |
-| `votes` | 投票记录 | 9 | (owner_id, round_id) 联合唯一 |
+| `vote_rounds` | 投票轮次 | 10 | community_id 外键 |
+| `votes` | 投票记录 | 12 | (owner_id, round_id) 联合唯一 |
+| `operation_logs` | 操作日志 | 12 | - |
 
 ### 完整 SQL 建表语句
 
@@ -222,12 +232,17 @@ CREATE DATABASE IF NOT EXISTS voting_system
 USE voting_system;
 
 -- 1. 系统用户表
+-- 角色说明：
+--   super_admin: 超级管理员，可以查看和管理所有小区，community_id 为 NULL
+--   community_admin: 小区管理员，可以查看和管理本小区的数据
+--   community_user: 小区普通用户，只能查看本小区的数据
 CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   username VARCHAR(50) UNIQUE NOT NULL,
   password VARCHAR(255) NOT NULL,
   name VARCHAR(100),
-  role ENUM('admin', 'staff') DEFAULT 'staff',
+  role ENUM('super_admin', 'community_admin', 'community_user') DEFAULT 'community_user',
+  community_id INT DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -283,6 +298,7 @@ CREATE TABLE IF NOT EXISTS owners (
 -- 5. 投票轮次表
 CREATE TABLE IF NOT EXISTS vote_rounds (
   id INT AUTO_INCREMENT PRIMARY KEY,
+  community_id INT,
   name VARCHAR(100) NOT NULL,
   year INT NOT NULL,
   round_code VARCHAR(20),
@@ -291,7 +307,9 @@ CREATE TABLE IF NOT EXISTS vote_rounds (
   status ENUM('draft', 'active', 'closed') DEFAULT 'draft',
   description TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE,
+  INDEX idx_vote_rounds_community (community_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 6. 投票记录表
@@ -299,16 +317,38 @@ CREATE TABLE IF NOT EXISTS votes (
   id INT AUTO_INCREMENT PRIMARY KEY,
   owner_id INT NOT NULL,
   round_id INT NOT NULL,
-  vote_status ENUM('pending', 'voted', 'refused', 'onsite', 'video', 'sweep') DEFAULT 'pending',
+  vote_status ENUM('pending', 'voted', 'refused', 'onsite', 'video') DEFAULT 'pending',
   vote_phone VARCHAR(50),
   vote_date DATE,
   remark TEXT,
-  sweep_status VARCHAR(100),
+  sweep_status VARCHAR(20) DEFAULT 'pending',
+  sweep_remark TEXT,
+  sweep_date DATE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (owner_id) REFERENCES owners(id) ON DELETE CASCADE,
   FOREIGN KEY (round_id) REFERENCES vote_rounds(id) ON DELETE CASCADE,
   UNIQUE KEY unique_vote (owner_id, round_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 7. 操作日志表
+CREATE TABLE IF NOT EXISTS operation_logs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT,
+  username VARCHAR(50),
+  action VARCHAR(50) NOT NULL,
+  module VARCHAR(50) NOT NULL,
+  target_type VARCHAR(50),
+  target_id INT,
+  target_name VARCHAR(200),
+  details TEXT,
+  ip_address VARCHAR(50),
+  user_agent VARCHAR(500),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_logs_user (user_id),
+  INDEX idx_logs_action (action),
+  INDEX idx_logs_module (module),
+  INDEX idx_logs_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 创建索引以提升查询性能
@@ -317,14 +357,18 @@ CREATE INDEX idx_owners_building ON owners(building);
 CREATE INDEX idx_owners_name ON owners(owner_name);
 CREATE INDEX idx_votes_round ON votes(round_id);
 CREATE INDEX idx_votes_status ON votes(vote_status);
+
+-- 创建用户相关索引
+CREATE INDEX idx_users_role ON users(role);
+CREATE INDEX idx_users_community ON users(community_id);
 ```
 
 ### 初始化数据
 
 ```sql
--- 插入默认管理员账户 (密码: admin123)
-INSERT INTO users (username, password, name, role) VALUES
-('admin', '$2a$10$r52knN1WReUMaI3yLGcDVeSAPc5m.HbslMUuwFB6084KN5DeE5.5C', '系统管理员', 'admin');
+-- 插入默认超级管理员账户 (密码: admin123)
+INSERT INTO users (username, password, name, role, community_id) VALUES
+('admin', '$2a$10$r52knN1WReUMaI3yLGcDVeSAPc5m.HbslMUuwFB6084KN5DeE5.5C', '系统管理员', 'super_admin', NULL);
 
 -- 插入示例小区数据
 INSERT INTO communities (name, address) VALUES
@@ -335,12 +379,12 @@ INSERT INTO phases (community_id, name, code) VALUES
 (1, '二期', '2'),
 (1, '三期', '3');
 
--- 插入示例投票轮次
-INSERT INTO vote_rounds (name, year, round_code, status) VALUES
-('2023年业主大会', 2023, '2023', 'closed'),
-('2024年业主大会', 2024, '2024', 'closed'),
-('2025年A轮业主大会', 2025, '2025A', 'closed'),
-('2025年B轮业主大会', 2025, '2025B', 'active');
+-- 插入示例投票轮次（关联小区）
+INSERT INTO vote_rounds (community_id, name, year, round_code, status) VALUES
+(1, '2023年业主大会', 2023, '2023', 'closed'),
+(1, '2024年业主大会', 2024, '2024', 'closed'),
+(1, '2025年A轮业主大会', 2025, '2025A', 'closed'),
+(1, '2025年B轮业主大会', 2025, '2025B', 'active');
 ```
 
 ### 字段详细说明
@@ -353,7 +397,8 @@ INSERT INTO vote_rounds (name, year, round_code, status) VALUES
 | username | VARCHAR(50) | 用户名，唯一 |
 | password | VARCHAR(255) | bcrypt 加密密码 |
 | name | VARCHAR(100) | 用户真实姓名 |
-| role | ENUM | 角色：admin/staff |
+| role | ENUM | 角色：super_admin/community_admin/community_user |
+| community_id | INT | 所属小区 ID（super_admin 为 NULL） |
 | created_at | TIMESTAMP | 创建时间 |
 | updated_at | TIMESTAMP | 更新时间 |
 
@@ -409,6 +454,7 @@ INSERT INTO vote_rounds (name, year, round_code, status) VALUES
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | INT | 主键，自增 |
+| community_id | INT | 外键，关联小区 |
 | name | VARCHAR(100) | 轮次名称 |
 | year | INT | 年份 |
 | round_code | VARCHAR(20) | 轮次代码 |
@@ -426,13 +472,32 @@ INSERT INTO vote_rounds (name, year, round_code, status) VALUES
 | id | INT | 主键，自增 |
 | owner_id | INT | 外键，关联业主 |
 | round_id | INT | 外键，关联轮次 |
-| vote_status | ENUM | 投票状态：pending/voted/refused/onsite/video/sweep |
+| vote_status | ENUM | 投票状态：pending/voted/refused/onsite/video |
 | vote_phone | VARCHAR(50) | 投票联系电话 |
 | vote_date | DATE | 投票日期 |
-| remark | TEXT | 备注 |
-| sweep_status | VARCHAR(100) | 扫楼情况 |
+| remark | TEXT | 投票备注 |
+| sweep_status | VARCHAR(20) | 扫楼状态：pending/contacted/completed/unreachable |
+| sweep_remark | TEXT | 扫楼备注 |
+| sweep_date | DATE | 扫楼日期 |
 | created_at | TIMESTAMP | 创建时间 |
 | updated_at | TIMESTAMP | 更新时间 |
+
+#### operation_logs 表（操作日志）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | INT | 主键，自增 |
+| user_id | INT | 操作用户 ID |
+| username | VARCHAR(50) | 操作用户名 |
+| action | VARCHAR(50) | 操作类型（create/update/delete/import 等） |
+| module | VARCHAR(50) | 模块名称（users/votes/owners 等） |
+| target_type | VARCHAR(50) | 目标类型 |
+| target_id | INT | 目标 ID |
+| target_name | VARCHAR(200) | 目标名称 |
+| details | TEXT | 操作详情（JSON 格式） |
+| ip_address | VARCHAR(50) | 客户端 IP |
+| user_agent | VARCHAR(500) | 客户端 User-Agent |
+| created_at | TIMESTAMP | 创建时间 |
 
 ### 索引说明
 
@@ -443,6 +508,13 @@ INSERT INTO vote_rounds (name, year, round_code, status) VALUES
 | idx_owners_name | owners | owner_name | 按姓名搜索 |
 | idx_votes_round | votes | round_id | 按轮次查询投票 |
 | idx_votes_status | votes | vote_status | 按状态筛选投票 |
+| idx_users_role | users | role | 按角色筛选用户 |
+| idx_users_community | users | community_id | 按小区筛选用户 |
+| idx_vote_rounds_community | vote_rounds | community_id | 按小区筛选投票轮次 |
+| idx_logs_user | operation_logs | user_id | 按用户查询日志 |
+| idx_logs_action | operation_logs | action | 按操作类型筛选 |
+| idx_logs_module | operation_logs | module | 按模块筛选 |
+| idx_logs_created | operation_logs | created_at | 按时间排序 |
 
 ## API 接口文档
 
@@ -497,6 +569,14 @@ INSERT INTO vote_rounds (name, year, round_code, status) VALUES
 | POST | `/api/votes/import` | 从 Excel 导入投票状态 |
 | GET | `/api/votes/stats` | 获取投票统计 |
 | GET | `/api/votes/progress` | 获取投票进度 |
+| PUT | `/api/votes/sweep/batch` | 批量更新扫楼状态 |
+
+### 日志接口
+
+| 方法 | 路径 | 说明 | 权限 |
+|------|------|------|------|
+| GET | `/api/logs` | 获取操作日志列表（支持分页、筛选） | 超级管理员 |
+| GET | `/api/logs/stats` | 获取日志统计信息 | 超级管理员 |
 
 ## Excel 导入格式
 
@@ -517,7 +597,9 @@ INSERT INTO vote_rounds (name, year, round_code, status) VALUES
 | 微信沟通人 | 微信联系人 | 李四 |
 | 房屋状态 | 居住状态 | 自住/租户/空置 |
 
-## 投票状态说明
+## 状态码说明
+
+### 投票状态 (vote_status)
 
 | 状态码 | 中文名称 | 说明 |
 |--------|----------|------|
@@ -526,7 +608,15 @@ INSERT INTO vote_rounds (name, year, round_code, status) VALUES
 | `refused` | 拒绝投票 | 业主拒绝参与 |
 | `onsite` | 现场投票 | 现场参与投票 |
 | `video` | 视频投票 | 视频方式投票 |
-| `sweep` | 扫楼 | 扫楼方式收集 |
+
+### 扫楼状态 (sweep_status)
+
+| 状态码 | 中文名称 | 说明 |
+|--------|----------|------|
+| `pending` | 待扫楼 | 默认状态，尚未进行扫楼 |
+| `contacted` | 已联系 | 已联系但未完成 |
+| `completed` | 已完成 | 扫楼完成 |
+| `unreachable` | 无法联系 | 多次尝试无法联系到业主 |
 
 ## Render + TiDB Cloud 部署 (推荐)
 
@@ -744,8 +834,8 @@ Push 到 main/master 分支或创建 Tag 时自动构建并推送镜像到 GitHu
 
 ```bash
 # 拉取镜像
-docker pull ghcr.io/YOUR_USERNAME/voting-system/backend:latest
-docker pull ghcr.io/YOUR_USERNAME/voting-system/frontend:latest
+docker pull ghcr.io/stormltf/voting-system/backend:latest
+docker pull ghcr.io/stormltf/voting-system/frontend:latest
 ```
 
 ### 使用 GitHub 镜像部署
@@ -765,7 +855,7 @@ services:
       - ./database/init:/docker-entrypoint-initdb.d:ro
 
   backend:
-    image: ghcr.io/YOUR_USERNAME/voting-system/backend:latest
+    image: ghcr.io/stormltf/voting-system/backend:latest
     ports:
       - "3001:3001"
     environment:
@@ -778,7 +868,7 @@ services:
       - mysql
 
   frontend:
-    image: ghcr.io/YOUR_USERNAME/voting-system/frontend:latest
+    image: ghcr.io/stormltf/voting-system/frontend:latest
     ports:
       - "3000:3000"
     depends_on:
