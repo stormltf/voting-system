@@ -6,10 +6,13 @@ import SweepRoomCell from './SweepRoomCell';
 interface Props {
   data: SweepUnitRoomsResponse;
   onRoomClick: (room: SweepRoomData) => void;
+  selectable?: boolean;
+  selectedRooms?: Set<number>;
+  onSelectRoom?: (ownerId: number, selected: boolean) => void;
 }
 
-export default function SweepFloorGrid({ data, onRoomClick }: Props) {
-  const { floors, stats, meta } = data;
+export default function SweepFloorGrid({ data, onRoomClick, selectable, selectedRooms, onSelectRoom }: Props) {
+  const { floors, meta } = data;
 
   // 从最高楼层到最低楼层排序
   const sortedFloors = Object.keys(floors)
@@ -67,6 +70,9 @@ export default function SweepFloorGrid({ data, onRoomClick }: Props) {
                     key={room.owner_id}
                     room={room}
                     onClick={() => onRoomClick(room)}
+                    selectable={selectable}
+                    selected={selectedRooms?.has(room.owner_id)}
+                    onSelect={(selected) => onSelectRoom?.(room.owner_id, selected)}
                   />
                 ))}
             </div>

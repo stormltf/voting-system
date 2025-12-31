@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Footprints, Loader2, ChevronDown, ChevronRight, X } from 'lucide-react';
+import { Footprints, Loader2, ChevronDown, ChevronRight, X, CheckSquare, Square } from 'lucide-react';
 import SweepFloorGrid from './SweepFloorGrid';
 import SweepEditModal from './SweepEditModal';
 import { voteApi } from '@/lib/api';
@@ -37,6 +37,11 @@ export default function SweepStatusVisualization({ communityId }: Props) {
   // UI 状态
   const [loading, setLoading] = useState(false);
   const [expandedPhases, setExpandedPhases] = useState<Set<number>>(new Set());
+
+  // 批量选择状态
+  const [batchMode, setBatchMode] = useState(false);
+  const [selectedRooms, setSelectedRooms] = useState<Set<number>>(new Set());
+  const [batchUpdating, setBatchUpdating] = useState(false);
 
   // 加载投票轮次列表
   useEffect(() => {
@@ -137,6 +142,64 @@ export default function SweepStatusVisualization({ communityId }: Props) {
   const closeDetail = () => {
     setSelectedUnit(null);
     setRoomData(null);
+    setBatchMode(false);
+    setSelectedRooms(new Set());
+  };
+
+  // 切换批量选择模式
+  const toggleBatchMode = () => {
+    setBatchMode(!batchMode);
+    setSelectedRooms(new Set());
+  };
+
+  // 处理房间选择
+  const handleSelectRoom = (ownerId: number, selected: boolean) => {
+    setSelectedRooms((prev) => {
+      const next = new Set(prev);
+      if (selected) {
+        next.add(ownerId);
+      } else {
+        next.delete(ownerId);
+      }
+      return next;
+    });
+  };
+
+  // 全选/取消全选
+  const toggleSelectAll = () => {
+    if (!roomData) return;
+    const allRoomIds = Object.values(roomData.floors)
+      .flat()
+      .map((room) => room.owner_id);
+    if (selectedRooms.size === allRoomIds.length) {
+      setSelectedRooms(new Set());
+    } else {
+      setSelectedRooms(new Set(allRoomIds));
+    }
+  };
+
+  // 批量更新扫楼状态
+  const handleBatchUpdateSweep = async (sweepStatus: string) => {
+    if (!communityId || !overviewData?.round || selectedRooms.size === 0) return;
+
+    try {
+      setBatchUpdating(true);
+      await voteApi.batchUpdateSweep({
+        owner_ids: Array.from(selectedRooms),
+        round_id: overviewData.round.id,
+        sweep_status: sweepStatus,
+        community_id: communityId,
+      });
+      // 刷新数据
+      await loadUnitDetail();
+      await loadOverview();
+      setSelectedRooms(new Set());
+      setBatchMode(false);
+    } catch (error) {
+      console.error('批量更新失败:', error);
+    } finally {
+      setBatchUpdating(false);
+    }
   };
 
   // 计算完成率
@@ -319,13 +382,81 @@ export default function SweepStatusVisualization({ communityId }: Props) {
                   <p className="text-sm text-slate-500 mt-0.5">{overviewData.round.name} - 扫楼进度</p>
                 )}
               </div>
-              <button
-                onClick={closeDetail}
-                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5 text-slate-400" />
-              </button>
+              <div className="flex items-center gap-2">
+                {/* 批量选择按钮 */}
+                <button
+                  onClick={toggleBatchMode}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5 ${
+                    batchMode
+                      ? 'bg-amber-500 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <Footprints className="w-4 h-4" />
+                  批量操作
+                </button>
+                <button
+                  onClick={closeDetail}
+                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
             </div>
+
+            {/* 批量操作工具栏 */}
+            {batchMode && (
+              <div className="px-6 py-3 bg-amber-50 border-b border-amber-100 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={toggleSelectAll}
+                    className="text-sm text-amber-600 hover:text-amber-700 flex items-center gap-1"
+                  >
+                    {roomData && selectedRooms.size === Object.values(roomData.floors).flat().length ? (
+                      <>
+                        <CheckSquare className="w-4 h-4" />
+                        取消全选
+                      </>
+                    ) : (
+                      <>
+                        <Square className="w-4 h-4" />
+                        全选
+                      </>
+                    )}
+                  </button>
+                  <span className="text-sm text-slate-500">
+                    已选择 <span className="font-semibold text-amber-600">{selectedRooms.size}</span> 户
+                  </span>
+                </div>
+                {selectedRooms.size > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-slate-500 mr-2">设置状态:</span>
+                    <button
+                      onClick={() => handleBatchUpdateSweep('completed')}
+                      disabled={batchUpdating}
+                      className="px-3 py-1.5 text-sm font-medium bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-50 transition-colors"
+                    >
+                      已完成
+                    </button>
+                    <button
+                      onClick={() => handleBatchUpdateSweep('in_progress')}
+                      disabled={batchUpdating}
+                      className="px-3 py-1.5 text-sm font-medium bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50 transition-colors"
+                    >
+                      进行中
+                    </button>
+                    <button
+                      onClick={() => handleBatchUpdateSweep('pending')}
+                      disabled={batchUpdating}
+                      className="px-3 py-1.5 text-sm font-medium bg-slate-300 text-slate-600 rounded-lg hover:bg-slate-400 disabled:opacity-50 transition-colors"
+                    >
+                      待扫楼
+                    </button>
+                    {batchUpdating && <Loader2 className="w-4 h-4 animate-spin text-amber-500" />}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* 弹窗内容 */}
             <div className="flex-1 overflow-auto">
@@ -335,7 +466,13 @@ export default function SweepStatusVisualization({ communityId }: Props) {
                   <span>加载中...</span>
                 </div>
               ) : roomData && roomData.meta.total_rooms > 0 ? (
-                <SweepFloorGrid data={roomData} onRoomClick={setEditingRoom} />
+                <SweepFloorGrid
+                  data={roomData}
+                  onRoomClick={setEditingRoom}
+                  selectable={batchMode}
+                  selectedRooms={selectedRooms}
+                  onSelectRoom={handleSelectRoom}
+                />
               ) : (
                 <div className="p-12 text-center text-slate-400">该单元没有房间数据</div>
               )}

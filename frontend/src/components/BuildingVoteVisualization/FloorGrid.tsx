@@ -7,12 +7,9 @@ import { UnitRoomsResponse, RoomData } from './types';
 interface Props {
   data: UnitRoomsResponse;
   onRoomClick: (room: RoomData) => void;
-  selectable?: boolean;
-  selectedRooms?: Set<number>;
-  onSelectRoom?: (ownerId: number, selected: boolean) => void;
 }
 
-export default function FloorGrid({ data, onRoomClick, selectable, selectedRooms, onSelectRoom }: Props) {
+export default function FloorGrid({ data, onRoomClick }: Props) {
   const { floors, meta } = data;
 
   // 从高到低排列楼层
@@ -58,23 +55,6 @@ export default function FloorGrid({ data, onRoomClick, selectable, selectedRooms
         </div>
       </div>
 
-      {/* 图例说明 */}
-      <div className="flex flex-wrap items-center gap-4 mb-4 text-xs text-slate-500">
-        <span>扫楼状态图例:</span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-4 h-4 rounded bg-slate-200 ring-2 ring-amber-400"></span>
-          已扫楼
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-4 h-4 rounded bg-slate-200 ring-2 ring-amber-300 ring-dashed"></span>
-          扫楼中
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-4 h-4 rounded bg-slate-200"></span>
-          待扫楼
-        </span>
-      </div>
-
       {/* 楼层网格 */}
       <div className="relative border border-slate-200 rounded-xl overflow-hidden">
         {sortedFloors.map(floor => (
@@ -96,9 +76,6 @@ export default function FloorGrid({ data, onRoomClick, selectable, selectedRooms
                     key={room.owner_id}
                     room={room}
                     onClick={() => onRoomClick(room)}
-                    selectable={selectable}
-                    selected={selectedRooms?.has(room.owner_id)}
-                    onSelect={(selected) => onSelectRoom?.(room.owner_id, selected)}
                   />
                 ))}
             </div>
