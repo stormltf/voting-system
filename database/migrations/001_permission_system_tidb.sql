@@ -13,14 +13,17 @@
 -- Part 1: Users 表修改
 -- ============================================
 
--- 1.1 将旧的角色值转换为新值
+-- 1.1 先扩展 role 字段长度（重要！必须先执行）
+ALTER TABLE users MODIFY COLUMN role VARCHAR(20) DEFAULT 'community_user';
+
+-- 1.2 将旧的角色值转换为新值
 UPDATE users SET role = 'super_admin' WHERE role = 'admin';
 UPDATE users SET role = 'community_user' WHERE role = 'staff';
 
--- 1.2 添加 community_id 字段（如果已存在会报错，忽略即可）
+-- 1.3 添加 community_id 字段（如果已存在会报错，忽略即可）
 ALTER TABLE users ADD COLUMN community_id INT DEFAULT NULL;
 
--- 1.3 添加索引（如果已存在会报错，忽略即可）
+-- 1.4 添加索引（如果已存在会报错，忽略即可）
 CREATE INDEX idx_users_community ON users(community_id);
 CREATE INDEX idx_users_role ON users(role);
 
