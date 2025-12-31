@@ -73,13 +73,14 @@ describe('StatsCard', () => {
       <StatsCard title="测试" value={1} color="blue" />
     );
 
-    expect(container.firstChild).toHaveClass('bg-blue-50');
+    // 颜色现在使用渐变背景
+    expect(container.firstChild).toHaveClass('from-blue-50');
 
     rerender(<StatsCard title="测试" value={1} color="green" />);
-    expect(container.firstChild).toHaveClass('bg-green-50');
+    expect(container.firstChild).toHaveClass('from-emerald-50');
 
     rerender(<StatsCard title="测试" value={1} color="red" />);
-    expect(container.firstChild).toHaveClass('bg-red-50');
+    expect(container.firstChild).toHaveClass('from-red-50');
   });
 
   it('默认颜色应该是白色背景', () => {
