@@ -152,6 +152,166 @@ router.get('/', authMiddleware, async (req, res) => {
   }
 });
 
+// 导出业主数据为 Excel（必须在 /:id 路由之前）
+router.get('/export', authMiddleware, async (req, res) => {
+  try {
+    const { phase_id, community_id, building, search, round_id, vote_status } = req.query;
+
+    let whereConditions = ['1=1'];
+    let params = [];
+    let joinParams = [];
+
+    // 非超级管理员只能导出自己小区的数据
+    if (!isSuperAdmin(req.user)) {
+      whereConditions.push('p.community_id = ?');
+      params.push(req.user.communityId);
+    } else if (community_id) {
+      whereConditions.push('p.community_id = ?');
+      params.push(community_id);
+    }
+
+    if (phase_id) {
+      whereConditions.push('o.phase_id = ?');
+      params.push(phase_id);
+    }
+
+    if (building) {
+      whereConditions.push('o.building = ?');
+      params.push(building);
+    }
+
+    if (search) {
+      whereConditions.push('(o.owner_name LIKE ? OR o.room_number LIKE ? OR o.phone1 LIKE ?)');
+      const searchPattern = `%${search}%`;
+      params.push(searchPattern, searchPattern, searchPattern);
+    }
+
+    // 构建投票状态筛选的 JOIN
+    let voteJoin = '';
+    let voteSelect = '';
+    if (round_id) {
+      voteJoin = 'LEFT JOIN votes v ON o.id = v.owner_id AND v.round_id = ?';
+      joinParams.push(round_id);
+      voteSelect = `, COALESCE(v.vote_status, 'pending') as vote_status, v.vote_date, v.remark as vote_remark, v.sweep_status`;
+
+      if (vote_status) {
+        if (vote_status === 'pending') {
+          whereConditions.push('(v.vote_status IS NULL OR v.vote_status = "pending")');
+        } else {
+          whereConditions.push('v.vote_status = ?');
+          params.push(vote_status);
+        }
+      }
+    }
+
+    const whereClause = whereConditions.join(' AND ');
+
+    // 获取数据（不分页）
+    const [owners] = await pool.query(`
+      SELECT o.*, p.name as phase_name, c.name as community_name
+             ${voteSelect}
+      FROM owners o
+      JOIN phases p ON o.phase_id = p.id
+      JOIN communities c ON p.community_id = c.id
+      ${voteJoin}
+      WHERE ${whereClause}
+      ORDER BY o.phase_id, o.building, o.unit, o.room
+    `, [...joinParams, ...params]);
+
+    // 投票状态映射
+    const voteStatusMap = {
+      'pending': '待投票',
+      'voted': '已投票',
+      'onsite': '现场投票',
+      'video': '视频投票',
+      'refused': '拒绝',
+      'sweep': '扫楼中'
+    };
+
+    // 转换为 Excel 格式
+    const excelData = owners.map((owner, index) => {
+      const row = {
+        '序号': owner.seq_no || index + 1,
+        '小区': owner.community_name,
+        '期数': owner.phase_name,
+        '房间号': owner.room_number,
+        '楼栋': owner.building,
+        '单元': owner.unit,
+        '房号': owner.room,
+        '业主姓名': owner.owner_name,
+        '面积': owner.area,
+        '车位号': owner.parking_no,
+        '车位面积': owner.parking_area,
+        '联系电话1': owner.phone1,
+        '联系电话2': owner.phone2,
+        '联系电话3': owner.phone3,
+        '群状态': owner.wechat_status,
+        '微信沟通人': owner.wechat_contact,
+        '房屋状态': owner.house_status,
+      };
+
+      // 如果有投票信息
+      if (round_id) {
+        row['投票状态'] = voteStatusMap[owner.vote_status] || owner.vote_status;
+        row['投票日期'] = owner.vote_date ? new Date(owner.vote_date).toLocaleDateString('zh-CN') : '';
+        row['扫楼状态'] = owner.sweep_status || '';
+        row['投票备注'] = owner.vote_remark || '';
+      }
+
+      return row;
+    });
+
+    // 创建工作簿
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(excelData);
+
+    // 设置列宽
+    ws['!cols'] = [
+      { wch: 6 },   // 序号
+      { wch: 15 },  // 小区
+      { wch: 10 },  // 期数
+      { wch: 15 },  // 房间号
+      { wch: 8 },   // 楼栋
+      { wch: 8 },   // 单元
+      { wch: 8 },   // 房号
+      { wch: 12 },  // 业主姓名
+      { wch: 10 },  // 面积
+      { wch: 12 },  // 车位号
+      { wch: 10 },  // 车位面积
+      { wch: 15 },  // 联系电话1
+      { wch: 15 },  // 联系电话2
+      { wch: 15 },  // 联系电话3
+      { wch: 10 },  // 群状态
+      { wch: 12 },  // 微信沟通人
+      { wch: 10 },  // 房屋状态
+    ];
+
+    if (round_id) {
+      ws['!cols'].push(
+        { wch: 10 },  // 投票状态
+        { wch: 12 },  // 投票日期
+        { wch: 15 },  // 扫楼状态
+        { wch: 20 },  // 投票备注
+      );
+    }
+
+    XLSX.utils.book_append_sheet(wb, ws, '业主数据');
+
+    // 生成 buffer
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    // 设置响应头
+    const filename = encodeURIComponent(`业主数据_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${filename}`);
+
+    res.send(buffer);
+  } catch (error) {
+    console.error('导出业主数据错误:', error);
+    res.status(500).json({ error: '服务器错误' });
+  }
+});
+
 // 获取单个业主详情
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
@@ -495,166 +655,6 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
   } catch (error) {
     console.error('导入业主数据错误:', error);
     res.status(500).json({ error: '服务器错误: ' + error.message });
-  }
-});
-
-// 导出业主数据为 Excel
-router.get('/export', authMiddleware, async (req, res) => {
-  try {
-    const { phase_id, community_id, building, search, round_id, vote_status } = req.query;
-
-    let whereConditions = ['1=1'];
-    let params = [];
-    let joinParams = [];
-
-    // 非超级管理员只能导出自己小区的数据
-    if (!isSuperAdmin(req.user)) {
-      whereConditions.push('p.community_id = ?');
-      params.push(req.user.communityId);
-    } else if (community_id) {
-      whereConditions.push('p.community_id = ?');
-      params.push(community_id);
-    }
-
-    if (phase_id) {
-      whereConditions.push('o.phase_id = ?');
-      params.push(phase_id);
-    }
-
-    if (building) {
-      whereConditions.push('o.building = ?');
-      params.push(building);
-    }
-
-    if (search) {
-      whereConditions.push('(o.owner_name LIKE ? OR o.room_number LIKE ? OR o.phone1 LIKE ?)');
-      const searchPattern = `%${search}%`;
-      params.push(searchPattern, searchPattern, searchPattern);
-    }
-
-    // 构建投票状态筛选的 JOIN
-    let voteJoin = '';
-    let voteSelect = '';
-    if (round_id) {
-      voteJoin = 'LEFT JOIN votes v ON o.id = v.owner_id AND v.round_id = ?';
-      joinParams.push(round_id);
-      voteSelect = `, COALESCE(v.vote_status, 'pending') as vote_status, v.vote_date, v.remark as vote_remark, v.sweep_status`;
-
-      if (vote_status) {
-        if (vote_status === 'pending') {
-          whereConditions.push('(v.vote_status IS NULL OR v.vote_status = "pending")');
-        } else {
-          whereConditions.push('v.vote_status = ?');
-          params.push(vote_status);
-        }
-      }
-    }
-
-    const whereClause = whereConditions.join(' AND ');
-
-    // 获取数据（不分页）
-    const [owners] = await pool.query(`
-      SELECT o.*, p.name as phase_name, c.name as community_name
-             ${voteSelect}
-      FROM owners o
-      JOIN phases p ON o.phase_id = p.id
-      JOIN communities c ON p.community_id = c.id
-      ${voteJoin}
-      WHERE ${whereClause}
-      ORDER BY o.phase_id, o.building, o.unit, o.room
-    `, [...joinParams, ...params]);
-
-    // 投票状态映射
-    const voteStatusMap = {
-      'pending': '待投票',
-      'voted': '已投票',
-      'onsite': '现场投票',
-      'video': '视频投票',
-      'refused': '拒绝',
-      'sweep': '扫楼中'
-    };
-
-    // 转换为 Excel 格式
-    const excelData = owners.map((owner, index) => {
-      const row = {
-        '序号': owner.seq_no || index + 1,
-        '小区': owner.community_name,
-        '期数': owner.phase_name,
-        '房间号': owner.room_number,
-        '楼栋': owner.building,
-        '单元': owner.unit,
-        '房号': owner.room,
-        '业主姓名': owner.owner_name,
-        '面积': owner.area,
-        '车位号': owner.parking_no,
-        '车位面积': owner.parking_area,
-        '联系电话1': owner.phone1,
-        '联系电话2': owner.phone2,
-        '联系电话3': owner.phone3,
-        '群状态': owner.wechat_status,
-        '微信沟通人': owner.wechat_contact,
-        '房屋状态': owner.house_status,
-      };
-
-      // 如果有投票信息
-      if (round_id) {
-        row['投票状态'] = voteStatusMap[owner.vote_status] || owner.vote_status;
-        row['投票日期'] = owner.vote_date ? new Date(owner.vote_date).toLocaleDateString('zh-CN') : '';
-        row['扫楼状态'] = owner.sweep_status || '';
-        row['投票备注'] = owner.vote_remark || '';
-      }
-
-      return row;
-    });
-
-    // 创建工作簿
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(excelData);
-
-    // 设置列宽
-    ws['!cols'] = [
-      { wch: 6 },   // 序号
-      { wch: 15 },  // 小区
-      { wch: 10 },  // 期数
-      { wch: 15 },  // 房间号
-      { wch: 8 },   // 楼栋
-      { wch: 8 },   // 单元
-      { wch: 8 },   // 房号
-      { wch: 12 },  // 业主姓名
-      { wch: 10 },  // 面积
-      { wch: 12 },  // 车位号
-      { wch: 10 },  // 车位面积
-      { wch: 15 },  // 联系电话1
-      { wch: 15 },  // 联系电话2
-      { wch: 15 },  // 联系电话3
-      { wch: 10 },  // 群状态
-      { wch: 12 },  // 微信沟通人
-      { wch: 10 },  // 房屋状态
-    ];
-
-    if (round_id) {
-      ws['!cols'].push(
-        { wch: 10 },  // 投票状态
-        { wch: 12 },  // 投票日期
-        { wch: 15 },  // 扫楼状态
-        { wch: 20 },  // 投票备注
-      );
-    }
-
-    XLSX.utils.book_append_sheet(wb, ws, '业主数据');
-
-    // 生成 buffer
-    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-
-    // 设置响应头
-    const filename = encodeURIComponent(`业主数据_${new Date().toISOString().slice(0, 10)}.xlsx`);
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${filename}`);
-
-    res.send(buffer);
-  } catch (error) {
-    console.error('导出业主数据错误:', error);
-    res.status(500).json({ error: '服务器错误' });
   }
 });
 
