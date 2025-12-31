@@ -656,10 +656,22 @@ router.get('/unit-rooms', authMiddleware, async (req, res) => {
     const stats = { voted: 0, refused: 0, pending: 0, sweep: 0 };
 
     for (const room of rooms) {
-      // 从 room 字段解析楼层 (前两位)
+      // 从 room 字段解析楼层 (通常最后两位是房号，前面是楼层)
       const roomStr = String(room.room || '');
-      const floor = parseInt(roomStr.substring(0, 2), 10) || 0;
-      const roomInFloor = roomStr.substring(2) || roomStr;
+      let floor = 0;
+      let roomInFloor = roomStr;
+
+      // 如果长度大于2，通常采用 XYY 或 XXYY 格式
+      if (roomStr.length > 2) {
+        const floorPart = roomStr.slice(0, -2);
+        if (!isNaN(floorPart)) {
+          floor = parseInt(floorPart, 10);
+          roomInFloor = roomStr.slice(-2);
+        }
+      } else {
+        // 长度不足，尝试直接解析
+        floor = parseInt(roomStr, 10) || 0;
+      }
 
       maxFloor = Math.max(maxFloor, floor);
 

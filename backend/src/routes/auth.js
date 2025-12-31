@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../models/db');
-const { authMiddleware, superAdminMiddleware, generateToken, ROLES } = require('../middleware/auth');
+const { authMiddleware, superAdminMiddleware, adminMiddleware, isSuperAdmin, generateToken, ROLES } = require('../middleware/auth');
 const { createLogger, getClientInfo, logOperation, Actions, Modules } = require('../utils/logger');
 
 const router = express.Router();

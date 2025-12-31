@@ -56,6 +56,7 @@ router.get('/', authMiddleware, async (req, res) => {
     const offset = (page - 1) * limit;
     let whereConditions = ['1=1'];
     let params = [];
+    let joinParams = [];
 
     // 非超级管理员只能查看自己小区的数据
     if (!isSuperAdmin(req.user)) {
@@ -99,7 +100,8 @@ router.get('/', authMiddleware, async (req, res) => {
     let voteJoin = '';
     let voteSelect = '';
     if (round_id) {
-      voteJoin = `LEFT JOIN votes v ON o.id = v.owner_id AND v.round_id = ${parseInt(round_id)}`;
+      voteJoin = 'LEFT JOIN votes v ON o.id = v.owner_id AND v.round_id = ?';
+      joinParams.push(round_id);
       voteSelect = ', v.vote_status, v.vote_phone, v.vote_date, v.remark as vote_remark, v.sweep_status';
       if (vote_status) {
         if (vote_status === 'pending') {
@@ -119,7 +121,7 @@ router.get('/', authMiddleware, async (req, res) => {
       JOIN communities c ON p.community_id = c.id
       ${voteJoin}
       WHERE ${whereClause}
-    `, params);
+    `, [...joinParams, ...params]);
 
     // 获取数据
     const [owners] = await pool.query(`
@@ -133,7 +135,7 @@ router.get('/', authMiddleware, async (req, res) => {
       WHERE ${whereClause}
       ORDER BY o.phase_id, o.building, o.unit, o.room
       LIMIT ? OFFSET ?
-    `, [...params, parseInt(limit), parseInt(offset)]);
+    `, [...joinParams, ...params, parseInt(limit), parseInt(offset)]);
 
     res.json({
       data: owners,
@@ -404,6 +406,10 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
           building = roomParts[0];
           unit = roomParts[1];
           room = roomParts.slice(2).join('-');
+        } else {
+          // 如果不符合 B-U-R 格式，尝试将整个字符串作为房间号
+          // 这样可以支持只有房间号的情况（如 "101"）
+          room = owner.room_number;
         }
 
         // 处理面积
