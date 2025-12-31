@@ -61,40 +61,40 @@ export default function BuildingVoteVisualization({ communityId }: Props) {
   }, [communityId]);
 
   // 加载楼栋概览数据
-  useEffect(() => {
+  const loadOverview = useCallback(async (showLoading = true) => {
     if (!communityId) return;
 
-    const loadOverview = async () => {
-      try {
-        setLoading(true);
-        const params: { community_id: number; round_id?: number } = {
-          community_id: communityId,
-        };
-        if (selectedRoundId) {
-          params.round_id = selectedRoundId;
-        }
-
-        const res = await voteApi.getBuildingOverview(params);
-        setOverviewData(res.data);
-
-        // 默认展开所有期数
-        if (res.data.phases) {
-          setExpandedPhases(new Set(res.data.phases.map((p: PhaseStats) => p.phase_id)));
-        }
-
-        // 如果没有选择轮次，从返回数据中获取默认轮次
-        if (!selectedRoundId && res.data.round) {
-          setSelectedRoundId(res.data.round.id);
-        }
-      } catch (error) {
-        console.error('加载楼栋概览失败:', error);
-      } finally {
-        setLoading(false);
+    try {
+      if (showLoading) setLoading(true);
+      const params: { community_id: number; round_id?: number } = {
+        community_id: communityId,
+      };
+      if (selectedRoundId) {
+        params.round_id = selectedRoundId;
       }
-    };
 
-    loadOverview();
+      const res = await voteApi.getBuildingOverview(params);
+      setOverviewData(res.data);
+
+      // 默认展开所有期数
+      if (res.data.phases) {
+        setExpandedPhases(new Set(res.data.phases.map((p: PhaseStats) => p.phase_id)));
+      }
+
+      // 如果没有选择轮次，从返回数据中获取默认轮次
+      if (!selectedRoundId && res.data.round) {
+        setSelectedRoundId(res.data.round.id);
+      }
+    } catch (error) {
+      console.error('加载楼栋概览失败:', error);
+    } finally {
+      if (showLoading) setLoading(false);
+    }
   }, [communityId, selectedRoundId]);
+
+  useEffect(() => {
+    loadOverview();
+  }, [loadOverview]);
 
   // 加载单元详情
   const loadUnitDetail = useCallback(async () => {
@@ -190,7 +190,11 @@ export default function BuildingVoteVisualization({ communityId }: Props) {
         owner_ids: Array.from(selectedRooms),
         vote_status: status,
       });
-      await loadUnitDetail();
+      // 同时刷新单元详情和楼栋概览数据
+      await Promise.all([
+        loadUnitDetail(),
+        loadOverview(false), // 不显示 loading，避免界面闪烁
+      ]);
       setSelectedRooms(new Set());
     } catch (error) {
       console.error('批量更新失败:', error);

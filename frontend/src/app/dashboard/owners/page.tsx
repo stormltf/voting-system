@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Upload, Edit2, Check, X, Users, FileSpreadsheet, Loader2, Download } from 'lucide-react';
+import { Search, Upload, Edit2, Check, X, Users, FileSpreadsheet, Loader2, Download, Plus, ChevronDown } from 'lucide-react';
 import DataTable from '@/components/DataTable';
 import { ownerApi, communityApi } from '@/lib/api';
 import { cn, wechatStatusMap } from '@/lib/utils';
@@ -63,6 +63,26 @@ export default function OwnersPage() {
 
   // 导出状态
   const [exporting, setExporting] = useState(false);
+
+  // 新增业主弹窗
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addPhaseId, setAddPhaseId] = useState<number | ''>('');
+  const [addForm, setAddForm] = useState({
+    building: '',
+    unit: '',
+    room: '',
+    owner_name: '',
+    area: '',
+    parking_no: '',
+    parking_area: '',
+    phone1: '',
+    phone2: '',
+    phone3: '',
+    wechat_status: '',
+    wechat_contact: '',
+    house_status: '',
+  });
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     const savedId = localStorage.getItem('selectedCommunityId');
@@ -234,6 +254,64 @@ export default function OwnersPage() {
     } catch (error) {
       console.error('更新失败:', error);
       alert('更新失败');
+    }
+  };
+
+  // 新增业主
+  const handleAddOwner = async () => {
+    if (!addPhaseId) {
+      alert('请选择期数');
+      return;
+    }
+    if (!addForm.building || !addForm.unit || !addForm.room) {
+      alert('请填写楼栋、单元、房号');
+      return;
+    }
+
+    try {
+      setAdding(true);
+      // 生成房间号格式: 楼栋-单元-房号
+      const roomNumber = `${addForm.building}-${addForm.unit}-${addForm.room}`;
+      await ownerApi.create({
+        phase_id: addPhaseId,
+        building: addForm.building,
+        unit: addForm.unit,
+        room: addForm.room,
+        room_number: roomNumber,
+        owner_name: addForm.owner_name || null,
+        area: addForm.area ? parseFloat(addForm.area) : null,
+        parking_no: addForm.parking_no || null,
+        parking_area: addForm.parking_area ? parseFloat(addForm.parking_area) : null,
+        phone1: addForm.phone1 || null,
+        phone2: addForm.phone2 || null,
+        phone3: addForm.phone3 || null,
+        wechat_status: addForm.wechat_status || '',
+        wechat_contact: addForm.wechat_contact || null,
+        house_status: addForm.house_status || null,
+      });
+      setShowAddModal(false);
+      setAddPhaseId('');
+      setAddForm({
+        building: '',
+        unit: '',
+        room: '',
+        owner_name: '',
+        area: '',
+        parking_no: '',
+        parking_area: '',
+        phone1: '',
+        phone2: '',
+        phone3: '',
+        wechat_status: '',
+        wechat_contact: '',
+        house_status: '',
+      });
+      loadOwners();
+    } catch (error: any) {
+      console.error('新增失败:', error);
+      alert(error.response?.data?.error || '新增失败');
+    } finally {
+      setAdding(false);
     }
   };
 
@@ -442,6 +520,14 @@ export default function OwnersPage() {
         </div>
         <div className="flex items-center gap-3">
           <button
+            onClick={() => setShowAddModal(true)}
+            disabled={!communityId}
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl hover:from-purple-600 hover:to-purple-700 shadow-lg shadow-purple-500/20 transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Plus className="w-4 h-4" />
+            新增业主
+          </button>
+          <button
             onClick={handleExport}
             disabled={exporting || !communityId}
             className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 shadow-lg shadow-blue-500/20 transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
@@ -648,6 +734,290 @@ export default function OwnersPage() {
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 新增业主弹窗 */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+            {/* 弹窗头部 */}
+            <div className="px-6 py-4 bg-gradient-to-r from-slate-50 to-white border-b border-slate-100">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
+                    <Plus className="w-5 h-5 text-white" />
+                  </div>
+                  <h2 className="text-lg font-semibold text-slate-900">新增业主</h2>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowAddModal(false);
+                    setAddPhaseId('');
+                    setAddForm({
+                      building: '',
+                      unit: '',
+                      room: '',
+                      owner_name: '',
+                      area: '',
+                      parking_no: '',
+                      parking_area: '',
+                      phone1: '',
+                      phone2: '',
+                      phone3: '',
+                      wechat_status: '',
+                      wechat_contact: '',
+                      house_status: '',
+                    });
+                  }}
+                  className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-5 overflow-y-auto">
+              {/* 期数选择 */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  选择期数 <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={addPhaseId}
+                  onChange={(e) => setAddPhaseId(e.target.value ? parseInt(e.target.value) : '')}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200"
+                >
+                  <option value="">请选择期数</option>
+                  {phases.map((phase) => (
+                    <option key={phase.id} value={phase.id}>
+                      {phase.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 房间信息 */}
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    楼栋 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={addForm.building}
+                    onChange={(e) => setAddForm({ ...addForm, building: e.target.value })}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200"
+                    placeholder="如：01"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    单元 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={addForm.unit}
+                    onChange={(e) => setAddForm({ ...addForm, unit: e.target.value })}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200"
+                    placeholder="如：01"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    房号 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={addForm.room}
+                    onChange={(e) => setAddForm({ ...addForm, room: e.target.value })}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200"
+                    placeholder="如：0101"
+                  />
+                </div>
+              </div>
+
+              {/* 业主信息 */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    业主姓名
+                  </label>
+                  <input
+                    type="text"
+                    value={addForm.owner_name}
+                    onChange={(e) => setAddForm({ ...addForm, owner_name: e.target.value })}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200"
+                    placeholder="姓名"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    面积 (m²)
+                  </label>
+                  <input
+                    type="text"
+                    value={addForm.area}
+                    onChange={(e) => setAddForm({ ...addForm, area: e.target.value })}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200"
+                    placeholder="如：120.5"
+                  />
+                </div>
+              </div>
+
+              {/* 车位信息 */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    车位号
+                  </label>
+                  <input
+                    type="text"
+                    value={addForm.parking_no}
+                    onChange={(e) => setAddForm({ ...addForm, parking_no: e.target.value })}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200"
+                    placeholder="车位号"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    车位面积 (m²)
+                  </label>
+                  <input
+                    type="text"
+                    value={addForm.parking_area}
+                    onChange={(e) => setAddForm({ ...addForm, parking_area: e.target.value })}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200"
+                    placeholder="如：12.5"
+                  />
+                </div>
+              </div>
+
+              {/* 联系电话 */}
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    联系电话1
+                  </label>
+                  <input
+                    type="text"
+                    value={addForm.phone1}
+                    onChange={(e) => setAddForm({ ...addForm, phone1: e.target.value })}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200"
+                    placeholder="电话"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    联系电话2
+                  </label>
+                  <input
+                    type="text"
+                    value={addForm.phone2}
+                    onChange={(e) => setAddForm({ ...addForm, phone2: e.target.value })}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200"
+                    placeholder="电话"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    联系电话3
+                  </label>
+                  <input
+                    type="text"
+                    value={addForm.phone3}
+                    onChange={(e) => setAddForm({ ...addForm, phone3: e.target.value })}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200"
+                    placeholder="电话"
+                  />
+                </div>
+              </div>
+
+              {/* 微信和房屋状态 */}
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    微信状态
+                  </label>
+                  <select
+                    value={addForm.wechat_status}
+                    onChange={(e) => setAddForm({ ...addForm, wechat_status: e.target.value })}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer"
+                  >
+                    <option value="">未添加</option>
+                    <option value="已加微信">已加微信</option>
+                    <option value="无法添加">无法添加</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    微信沟通人
+                  </label>
+                  <input
+                    type="text"
+                    value={addForm.wechat_contact}
+                    onChange={(e) => setAddForm({ ...addForm, wechat_contact: e.target.value })}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200"
+                    placeholder="沟通人"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    房屋状态
+                  </label>
+                  <select
+                    value={addForm.house_status}
+                    onChange={(e) => setAddForm({ ...addForm, house_status: e.target.value })}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer"
+                  >
+                    <option value="">未知</option>
+                    <option value="业主自住">业主自住</option>
+                    <option value="个人租户">个人租户</option>
+                    <option value="中介租户">中介租户</option>
+                    <option value="业主亲友">业主亲友</option>
+                    <option value="空置">空置</option>
+                    <option value="已卖房">已卖房</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* 操作按钮 */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => {
+                    setShowAddModal(false);
+                    setAddPhaseId('');
+                    setAddForm({
+                      building: '',
+                      unit: '',
+                      room: '',
+                      owner_name: '',
+                      area: '',
+                      parking_no: '',
+                      parking_area: '',
+                      phone1: '',
+                      phone2: '',
+                      phone3: '',
+                      wechat_status: '',
+                      wechat_contact: '',
+                      house_status: '',
+                    });
+                  }}
+                  className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 transition-all duration-200 font-medium"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleAddOwner}
+                  disabled={adding}
+                  className="flex-1 py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl hover:from-purple-600 hover:to-purple-700 shadow-lg shadow-purple-500/20 transition-all duration-200 font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {adding && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {adding ? '保存中...' : '保存'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
