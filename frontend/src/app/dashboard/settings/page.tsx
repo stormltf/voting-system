@@ -267,9 +267,12 @@ export default function SettingsPage() {
 
     try {
       setUserFormLoading(true);
-      const communityIdValue = userForm.role === 'super_admin'
-        ? null
-        : (typeof userForm.communityId === 'number' ? userForm.communityId : null);
+      let communityIdValue: number | null = null;
+      if (userForm.role !== 'super_admin' && userForm.communityId) {
+        communityIdValue = typeof userForm.communityId === 'number'
+          ? userForm.communityId
+          : parseInt(String(userForm.communityId), 10);
+      }
 
       if (editingUser) {
         await authApi.updateUser(editingUser.id, {
