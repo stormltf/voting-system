@@ -354,7 +354,7 @@ router.put('/batch', authMiddleware, adminMiddleware, async (req, res) => {
       return res.status(400).json({ error: '请选择投票轮次' });
     }
 
-    // 检查权限
+    // Check permissions
     const communityId = await getCommunityIdByRound(round_id);
     if (!communityId) {
       return res.status(400).json({ error: '投票轮次不存在' });
@@ -363,37 +363,29 @@ router.put('/batch', authMiddleware, adminMiddleware, async (req, res) => {
       return res.status(403).json({ error: '无权管理该投票轮次' });
     }
 
-    let successCount = 0;
-    const connection = await pool.getConnection();
-    await connection.beginTransaction();
+    const targetDate = vote_date || new Date();
+    const targetStatus = vote_status || 'voted';
 
-    try {
-      for (const owner_id of owner_ids) {
-        await connection.query(`
-          INSERT INTO votes (owner_id, round_id, vote_status, vote_date)
-          VALUES (?, ?, ?, ?)
-          ON DUPLICATE KEY UPDATE
-            vote_status = VALUES(vote_status),
-            vote_date = VALUES(vote_date)
-        `, [owner_id, round_id, vote_status || 'voted', vote_date || new Date()]);
-        successCount++;
-      }
-      await connection.commit();
-    } catch (error) {
-      await connection.rollback();
-      throw error;
-    } finally {
-      connection.release();
-    }
+    // Prepare bulk data: [owner_id, round_id, vote_status, vote_date]
+    const values = owner_ids.map(id => [id, round_id, targetStatus, targetDate]);
 
-    // 记录日志
+    // Use bulk insert + update syntax
+    const [result] = await pool.query(`
+      INSERT INTO votes (owner_id, round_id, vote_status, vote_date)
+      VALUES ?
+      ON DUPLICATE KEY UPDATE
+        vote_status = VALUES(vote_status),
+        vote_date = VALUES(vote_date)
+    `, [values]);
+
+    // Log the action
     const log = createLogger(req);
     await log(Actions.BATCH_UPDATE, Modules.VOTE, {
       targetType: 'vote',
-      details: `批量更新投票状态: ${successCount} 条记录 -> ${vote_status || 'voted'}`,
+      details: `批量更新投票状态: ${values.length} 条记录 -> ${targetStatus}`,
     });
 
-    res.json({ message: `成功更新 ${successCount} 条记录` });
+    res.json({ message: `成功更新 ${values.length} 条记录` });
   } catch (error) {
     console.error('批量更新投票状态错误:', error);
     res.status(500).json({ error: '服务器错误' });
@@ -411,57 +403,44 @@ router.post('/init', authMiddleware, adminMiddleware, async (req, res) => {
       return res.status(400).json({ error: '请选择投票轮次和小区' });
     }
 
-    // 检查权限
+    // Check permissions
     if (!canManageCommunity(req.user, community_id)) {
       return res.status(403).json({ error: '无权管理该小区' });
     }
 
-    // 获取该小区所有业主
-    const [owners] = await pool.query(`
-      SELECT o.id FROM owners o
+    // Performance optimization: Use INSERT INTO ... SELECT
+    // Avoids fetching all owners to app layer and loop-inserting
+    const [result] = await pool.query(`
+      INSERT IGNORE INTO votes (owner_id, round_id, vote_status)
+      SELECT o.id, ?, 'pending'
+      FROM owners o
+      JOIN phases p ON o.phase_id = p.id
+      WHERE p.community_id = ?
+    `, [round_id, community_id]);
+
+    const createdCount = result.affectedRows;
+
+    // Get total owners for stats only
+    const [countResult] = await pool.query(`
+      SELECT COUNT(*) as total FROM owners o
       JOIN phases p ON o.phase_id = p.id
       WHERE p.community_id = ?
     `, [community_id]);
 
-    if (owners.length === 0) {
-      return res.status(400).json({ error: '该小区没有业主数据' });
-    }
+    const totalOwners = countResult[0].total;
 
-    // 批量插入投票记录（忽略已存在的）
-    let insertCount = 0;
-    const connection = await pool.getConnection();
-    await connection.beginTransaction();
-
-    try {
-      for (const owner of owners) {
-        const [result] = await connection.query(`
-          INSERT IGNORE INTO votes (owner_id, round_id, vote_status)
-          VALUES (?, ?, 'pending')
-        `, [owner.id, round_id]);
-        if (result.affectedRows > 0) {
-          insertCount++;
-        }
-      }
-      await connection.commit();
-    } catch (error) {
-      await connection.rollback();
-      throw error;
-    } finally {
-      connection.release();
-    }
-
-    // 记录日志
+    // Log the action
     const log = createLogger(req);
     await log(Actions.CREATE, Modules.VOTE, {
       targetType: 'vote',
-      details: `初始化投票记录: 轮次ID ${round_id}, 创建 ${insertCount} 条记录`,
+      details: `初始化投票记录: 轮次ID ${round_id}, 创建 ${createdCount} 条记录`,
     });
 
     res.json({
-      message: `成功初始化 ${insertCount} 条投票记录`,
-      total: owners.length,
-      created: insertCount,
-      skipped: owners.length - insertCount,
+      message: `成功初始化 ${createdCount} 条投票记录`,
+      total: totalOwners,
+      created: createdCount,
+      skipped: totalOwners - createdCount,
     });
   } catch (error) {
     console.error('初始化投票记录错误:', error);
@@ -482,12 +461,12 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
       return res.status(400).json({ error: '请选择投票轮次和小区' });
     }
 
-    // 检查权限
+    // Check permissions
     if (!canManageCommunity(req.user, community_id)) {
       return res.status(403).json({ error: '无权管理该小区' });
     }
 
-    // 解析 Excel
+    // Parse Excel
     const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
@@ -499,7 +478,7 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
 
     const headers = data[0];
 
-    // 查找房间号列（支持多种列名）
+    // Find Room Column
     const roomColIndex = headers.findIndex(h =>
       h && (h.includes('房间') || h.includes('房号') || h === '房间号')
     );
@@ -507,111 +486,103 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
       return res.status(400).json({ error: '找不到房间号列' });
     }
 
-    // 查找投票状态列（如 "25B投否"）
+    // Find Vote Status Column
     let voteColIndex = -1;
     if (vote_column) {
       voteColIndex = headers.findIndex(h => h && h.includes(vote_column));
     }
     if (voteColIndex === -1) {
-      // 尝试自动查找包含"投否"的列
       voteColIndex = headers.findIndex(h => h && h.includes('投否'));
     }
     if (voteColIndex === -1) {
       return res.status(400).json({ error: '找不到投票状态列，请指定 vote_column 参数' });
     }
 
-    // 查找备注列
+    // Find other columns
     const remarkColIndex = headers.findIndex(h => h && h.includes('备注'));
-
-    // 查找扫楼情况列
     const sweepColIndex = headers.findIndex(h => h && h.includes('扫楼'));
 
-    // 获取该小区所有业主（用于匹配房间号）
+    // Get owners map
     const [owners] = await pool.query(`
       SELECT o.id, o.room_number FROM owners o
       JOIN phases p ON o.phase_id = p.id
       WHERE p.community_id = ?
     `, [community_id]);
 
-    // 创建房间号到业主ID的映射
     const roomToOwnerId = {};
     for (const owner of owners) {
-      // 标准化房间号（去除空格和特殊字符）
-      const normalizedRoom = owner.room_number.replace(/[\s-]/g, '');
+      const normalizedRoom = String(owner.room_number).replace(/[\s-]/g, '');
       roomToOwnerId[normalizedRoom] = owner.id;
       roomToOwnerId[owner.room_number] = owner.id;
     }
 
-    // 处理数据
-    let successCount = 0;
+    // Pre-process data
+    const bulkData = [];
+    const notFoundRooms = [];
     let votedCount = 0;
     let pendingCount = 0;
     let notFoundCount = 0;
-    const notFoundRooms = [];
 
-    const connection = await pool.getConnection();
-    await connection.beginTransaction();
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (!row || !row[roomColIndex]) continue;
 
-    try {
-      for (let i = 1; i < data.length; i++) {
-        const row = data[i];
-        if (!row || !row[roomColIndex]) continue;
+      const roomNumber = String(row[roomColIndex]).trim();
+      const voteValue = row[voteColIndex];
+      const remark = remarkColIndex >= 0 ? row[remarkColIndex] : null;
+      const sweepStatus = sweepColIndex >= 0 ? row[sweepColIndex] : null;
 
-        const roomNumber = String(row[roomColIndex]).trim();
-        const voteValue = row[voteColIndex];
-        const remark = remarkColIndex >= 0 ? row[remarkColIndex] : null;
-        const sweepStatus = sweepColIndex >= 0 ? row[sweepColIndex] : null;
+      const normalizedRoom = roomNumber.replace(/[\s-]/g, '');
+      const ownerId = roomToOwnerId[normalizedRoom] || roomToOwnerId[roomNumber];
 
-        // 标准化房间号进行匹配
-        const normalizedRoom = roomNumber.replace(/[\s-]/g, '');
-        const ownerId = roomToOwnerId[normalizedRoom] || roomToOwnerId[roomNumber];
-
-        if (!ownerId) {
-          notFoundCount++;
-          if (notFoundRooms.length < 10) {
-            notFoundRooms.push(roomNumber);
-          }
-          continue;
+      if (!ownerId) {
+        notFoundCount++;
+        if (notFoundRooms.length < 10) {
+          notFoundRooms.push(roomNumber);
         }
+        continue;
+      }
 
-        // 判断投票状态：值为 1 表示已投票
-        const voteStatus = (voteValue === 1 || voteValue === '1' || voteValue === '是') ? 'voted' : 'pending';
+      const voteStatus = (voteValue === 1 || voteValue === '1' || voteValue === '是') ? 'voted' : 'pending';
+      if (voteStatus === 'voted') votedCount++; else pendingCount++;
 
-        // 插入或更新投票记录（所有业主都导入，包括未投票的）
-        await connection.query(`
+      // [ownerId, roundId, voteStatus, remark, sweepStatus]
+      bulkData.push([
+        ownerId,
+        round_id,
+        voteStatus,
+        remark || null,
+        sweepStatus || null
+      ]);
+    }
+
+    // Bulk Insert / Update in batches
+    if (bulkData.length > 0) {
+      const BATCH_SIZE = 1000;
+      for (let i = 0; i < bulkData.length; i += BATCH_SIZE) {
+        const batch = bulkData.slice(i, i + BATCH_SIZE);
+
+        await pool.query(`
           INSERT INTO votes (owner_id, round_id, vote_status, remark, sweep_status)
-          VALUES (?, ?, ?, ?, ?)
+          VALUES ?
           ON DUPLICATE KEY UPDATE
             vote_status = VALUES(vote_status),
             remark = COALESCE(VALUES(remark), remark),
             sweep_status = COALESCE(VALUES(sweep_status), sweep_status)
-        `, [ownerId, round_id, voteStatus, remark || null, sweepStatus || null]);
-
-        successCount++;
-        if (voteStatus === 'voted') {
-          votedCount++;
-        } else {
-          pendingCount++;
-        }
+        `, [batch]);
       }
-      await connection.commit();
-    } catch (error) {
-      await connection.rollback();
-      throw error;
-    } finally {
-      connection.release();
     }
 
-    // 记录日志
+    // Log the action
     const log = createLogger(req);
     await log(Actions.IMPORT, Modules.VOTE, {
       targetType: 'vote',
-      details: `导入投票记录: 总计 ${successCount} (已投票 ${votedCount}, 待投票 ${pendingCount}), 未找到 ${notFoundCount}`,
+      details: `导入投票记录: 总计 ${bulkData.length} (已投票 ${votedCount}, 待投票 ${pendingCount}), 未找到 ${notFoundCount}`,
     });
 
     res.json({
       message: `导入完成`,
-      success: successCount,
+      success: bulkData.length,
       voted: votedCount,
       pending: pendingCount,
       notFound: notFoundCount,
