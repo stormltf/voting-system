@@ -363,6 +363,19 @@ router.put('/batch', authMiddleware, adminMiddleware, async (req, res) => {
       return res.status(403).json({ error: '无权管理该投票轮次' });
     }
 
+    // 验证所有业主是否属于该小区
+    const uniqueOwnerIds = [...new Set(owner_ids)];
+    const [validOwners] = await pool.query(`
+      SELECT COUNT(*) as count
+      FROM owners o
+      JOIN phases p ON o.phase_id = p.id
+      WHERE o.id IN (?) AND p.community_id = ?
+    `, [uniqueOwnerIds, communityId]);
+
+    if (validOwners[0].count !== uniqueOwnerIds.length) {
+      return res.status(400).json({ error: '包含无效的业主ID或非本小区的业主' });
+    }
+
     const targetDate = vote_date || new Date();
     const targetStatus = vote_status || 'voted';
 
@@ -455,6 +468,17 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
 
     if (!req.file) {
       return res.status(400).json({ error: '请上传文件' });
+    }
+
+    // 验证文件类型
+    const validMimeTypes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel'
+    ];
+    const fileExtension = req.file.originalname.split('.').pop().toLowerCase();
+
+    if (!validMimeTypes.includes(req.file.mimetype) && !['xlsx', 'xls'].includes(fileExtension)) {
+      return res.status(400).json({ error: '请上传有效的 Excel 文件 (.xlsx 或 .xls)' });
     }
 
     if (!round_id || !community_id) {

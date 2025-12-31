@@ -511,6 +511,17 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
       return res.status(400).json({ error: '请上传文件' });
     }
 
+    // 验证文件类型
+    const validMimeTypes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel'
+    ];
+    const fileExtension = req.file.originalname.split('.').pop().toLowerCase();
+
+    if (!validMimeTypes.includes(req.file.mimetype) && !['xlsx', 'xls'].includes(fileExtension)) {
+      return res.status(400).json({ error: '请上传有效的 Excel 文件 (.xlsx 或 .xls)' });
+    }
+
     const { phase_id } = req.body;
     if (!phase_id) {
       return res.status(400).json({ error: '请指定期数' });
