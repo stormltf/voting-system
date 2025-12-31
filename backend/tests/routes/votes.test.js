@@ -285,6 +285,135 @@ describe('Votes Routes', () => {
         expect(response.status).toBe(400);
         expect(response.body.error).toBe('业主ID和投票轮次不能为空');
       });
+
+      it('应该拒绝不存在的投票轮次', async () => {
+        pool.query.mockResolvedValueOnce([[]]);
+
+        const response = await request(app)
+          .post('/api/votes')
+          .set('Authorization', `Bearer ${superAdminToken}`)
+          .send({ owner_id: 1, round_id: 999 });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error).toBe('投票轮次不存在');
+      });
+
+      it('应该成功创建投票记录', async () => {
+        // 第一次查询：获取轮次所属小区
+        pool.query.mockResolvedValueOnce([[{ community_id: 1 }]]);
+        // 第二次查询：插入投票记录
+        pool.query.mockResolvedValueOnce([{ insertId: 1 }]);
+        // 第三次查询：获取业主信息
+        pool.query.mockResolvedValueOnce([[{ room_number: '01-01-0101' }]]);
+        // 第四次查询：记录日志
+        pool.query.mockResolvedValueOnce([{ insertId: 1 }]);
+
+        const response = await request(app)
+          .post('/api/votes')
+          .set('Authorization', `Bearer ${superAdminToken}`)
+          .send({
+            owner_id: 1,
+            round_id: 1,
+            vote_status: 'voted',
+            vote_date: '2024-01-01'
+          });
+
+        expect(response.status).toBe(200);
+        expect(response.body.vote_status).toBe('voted');
+      });
+    });
+
+    describe('PUT /api/votes/batch', () => {
+      it('应该拒绝空的业主列表', async () => {
+        const response = await request(app)
+          .put('/api/votes/batch')
+          .set('Authorization', `Bearer ${superAdminToken}`)
+          .send({ owner_ids: [], round_id: 1 });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error).toBe('请选择业主');
+      });
+
+      it('应该拒绝空的轮次ID', async () => {
+        const response = await request(app)
+          .put('/api/votes/batch')
+          .set('Authorization', `Bearer ${superAdminToken}`)
+          .send({ owner_ids: [1, 2, 3] });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error).toBe('请选择投票轮次');
+      });
+
+      it('应该成功批量更新投票状态', async () => {
+        // 第一次查询：获取轮次所属小区
+        pool.query.mockResolvedValueOnce([[{ community_id: 1 }]]);
+        // 第二次查询：验证业主是否属于该小区
+        pool.query.mockResolvedValueOnce([[{ count: 3 }]]);
+        // 第三次查询：批量插入/更新
+        pool.query.mockResolvedValueOnce([{ affectedRows: 3 }]);
+        // 第四次查询：记录日志
+        pool.query.mockResolvedValueOnce([{ insertId: 1 }]);
+
+        const response = await request(app)
+          .put('/api/votes/batch')
+          .set('Authorization', `Bearer ${superAdminToken}`)
+          .send({
+            owner_ids: [1, 2, 3],
+            round_id: 1,
+            vote_status: 'voted'
+          });
+
+        expect(response.status).toBe(200);
+        expect(response.body.message).toContain('成功更新');
+      });
+
+      it('应该拒绝包含无效业主的请求', async () => {
+        pool.query.mockResolvedValueOnce([[{ community_id: 1 }]]);
+        // 只有2个有效业主，但请求了3个
+        pool.query.mockResolvedValueOnce([[{ count: 2 }]]);
+
+        const response = await request(app)
+          .put('/api/votes/batch')
+          .set('Authorization', `Bearer ${superAdminToken}`)
+          .send({
+            owner_ids: [1, 2, 999],
+            round_id: 1,
+            vote_status: 'voted'
+          });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error).toBe('包含无效的业主ID或非本小区的业主');
+      });
+    });
+
+    describe('POST /api/votes/init', () => {
+      it('应该拒绝空的轮次ID或小区ID', async () => {
+        const response = await request(app)
+          .post('/api/votes/init')
+          .set('Authorization', `Bearer ${superAdminToken}`)
+          .send({ round_id: '', community_id: '' });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error).toBe('请选择投票轮次和小区');
+      });
+
+      it('应该成功初始化投票记录', async () => {
+        // 第一次查询：初始化投票记录
+        pool.query.mockResolvedValueOnce([{ affectedRows: 100 }]);
+        // 第二次查询：获取业主总数
+        pool.query.mockResolvedValueOnce([[{ total: 100 }]]);
+        // 第三次查询：记录日志
+        pool.query.mockResolvedValueOnce([{ insertId: 1 }]);
+
+        const response = await request(app)
+          .post('/api/votes/init')
+          .set('Authorization', `Bearer ${superAdminToken}`)
+          .send({ round_id: 1, community_id: 1 });
+
+        expect(response.status).toBe(200);
+        expect(response.body.created).toBe(100);
+        expect(response.body.total).toBe(100);
+      });
     });
   });
 });

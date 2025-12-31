@@ -3,8 +3,12 @@ const {
   authMiddleware,
   superAdminMiddleware,
   adminMiddleware,
+  communityAccessMiddleware,
+  communityManageMiddleware,
   generateToken,
   ROLES,
+  ROLE_LEVELS,
+  hasRoleLevel,
   isSuperAdmin,
   canAccessCommunity,
   canManageCommunity
@@ -243,6 +247,136 @@ describe('Auth Middleware', () => {
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'test-secret-key');
 
       expect(decoded.communityId).toBeNull();
+    });
+  });
+
+  describe('ROLE_LEVELS', () => {
+    it('应该定义正确的权限级别', () => {
+      expect(ROLE_LEVELS[ROLES.COMMUNITY_USER]).toBe(1);
+      expect(ROLE_LEVELS[ROLES.COMMUNITY_ADMIN]).toBe(2);
+      expect(ROLE_LEVELS[ROLES.SUPER_ADMIN]).toBe(3);
+    });
+  });
+
+  describe('hasRoleLevel', () => {
+    it('超级管理员应该有所有权限', () => {
+      expect(hasRoleLevel(ROLES.SUPER_ADMIN, ROLES.COMMUNITY_USER)).toBe(true);
+      expect(hasRoleLevel(ROLES.SUPER_ADMIN, ROLES.COMMUNITY_ADMIN)).toBe(true);
+      expect(hasRoleLevel(ROLES.SUPER_ADMIN, ROLES.SUPER_ADMIN)).toBe(true);
+    });
+
+    it('小区管理员应该有用户权限但没有超管权限', () => {
+      expect(hasRoleLevel(ROLES.COMMUNITY_ADMIN, ROLES.COMMUNITY_USER)).toBe(true);
+      expect(hasRoleLevel(ROLES.COMMUNITY_ADMIN, ROLES.COMMUNITY_ADMIN)).toBe(true);
+      expect(hasRoleLevel(ROLES.COMMUNITY_ADMIN, ROLES.SUPER_ADMIN)).toBe(false);
+    });
+
+    it('普通用户只有基本权限', () => {
+      expect(hasRoleLevel(ROLES.COMMUNITY_USER, ROLES.COMMUNITY_USER)).toBe(true);
+      expect(hasRoleLevel(ROLES.COMMUNITY_USER, ROLES.COMMUNITY_ADMIN)).toBe(false);
+      expect(hasRoleLevel(ROLES.COMMUNITY_USER, ROLES.SUPER_ADMIN)).toBe(false);
+    });
+
+    it('未知角色应返回 false', () => {
+      expect(hasRoleLevel('unknown', ROLES.COMMUNITY_USER)).toBe(false);
+    });
+  });
+
+  describe('communityAccessMiddleware', () => {
+    it('超级管理员可以访问所有小区', () => {
+      const middleware = communityAccessMiddleware((req) => req.params.communityId);
+      mockReq.user = { role: ROLES.SUPER_ADMIN };
+      mockReq.params = { communityId: '5' };
+
+      middleware(mockReq, mockRes, nextFunction);
+
+      expect(nextFunction).toHaveBeenCalled();
+    });
+
+    it('没有指定小区ID时应设置 communityFilter', () => {
+      const middleware = communityAccessMiddleware((req) => req.params.communityId);
+      mockReq.user = { role: ROLES.COMMUNITY_ADMIN, communityId: 3 };
+      mockReq.params = {};
+
+      middleware(mockReq, mockRes, nextFunction);
+
+      expect(nextFunction).toHaveBeenCalled();
+      expect(mockReq.communityFilter).toBe(3);
+    });
+
+    it('用户尝试访问其他小区应被拒绝', () => {
+      const middleware = communityAccessMiddleware((req) => req.params.communityId);
+      mockReq.user = { role: ROLES.COMMUNITY_ADMIN, communityId: 1 };
+      mockReq.params = { communityId: '5' };
+
+      middleware(mockReq, mockRes, nextFunction);
+
+      expect(mockRes.status).toHaveBeenCalledWith(403);
+      expect(mockRes.json).toHaveBeenCalledWith({ error: '无权访问该小区数据' });
+    });
+
+    it('用户访问自己的小区应被允许', () => {
+      const middleware = communityAccessMiddleware((req) => req.params.communityId);
+      mockReq.user = { role: ROLES.COMMUNITY_ADMIN, communityId: 5 };
+      mockReq.params = { communityId: '5' };
+
+      middleware(mockReq, mockRes, nextFunction);
+
+      expect(nextFunction).toHaveBeenCalled();
+    });
+  });
+
+  describe('communityManageMiddleware', () => {
+    it('超级管理员可以管理所有小区', () => {
+      const middleware = communityManageMiddleware((req) => req.params.communityId);
+      mockReq.user = { role: ROLES.SUPER_ADMIN };
+      mockReq.params = { communityId: '5' };
+
+      middleware(mockReq, mockRes, nextFunction);
+
+      expect(nextFunction).toHaveBeenCalled();
+    });
+
+    it('普通用户不能管理任何小区', () => {
+      const middleware = communityManageMiddleware((req) => req.params.communityId);
+      mockReq.user = { role: ROLES.COMMUNITY_USER, communityId: 1 };
+      mockReq.params = { communityId: '1' };
+
+      middleware(mockReq, mockRes, nextFunction);
+
+      expect(mockRes.status).toHaveBeenCalledWith(403);
+      expect(mockRes.json).toHaveBeenCalledWith({ error: '普通用户只有查看权限' });
+    });
+
+    it('小区管理员不能管理其他小区', () => {
+      const middleware = communityManageMiddleware((req) => req.params.communityId);
+      mockReq.user = { role: ROLES.COMMUNITY_ADMIN, communityId: 1 };
+      mockReq.params = { communityId: '5' };
+
+      middleware(mockReq, mockRes, nextFunction);
+
+      expect(mockRes.status).toHaveBeenCalledWith(403);
+      expect(mockRes.json).toHaveBeenCalledWith({ error: '无权管理该小区数据' });
+    });
+
+    it('小区管理员可以管理自己的小区', () => {
+      const middleware = communityManageMiddleware((req) => req.params.communityId);
+      mockReq.user = { role: ROLES.COMMUNITY_ADMIN, communityId: 5 };
+      mockReq.params = { communityId: '5' };
+
+      middleware(mockReq, mockRes, nextFunction);
+
+      expect(nextFunction).toHaveBeenCalled();
+    });
+
+    it('没有指定小区ID时小区管理员应被允许', () => {
+      const middleware = communityManageMiddleware((req) => req.params.communityId);
+      mockReq.user = { role: ROLES.COMMUNITY_ADMIN, communityId: 1 };
+      mockReq.params = {};
+
+      middleware(mockReq, mockRes, nextFunction);
+
+      expect(nextFunction).toHaveBeenCalled();
     });
   });
 });
