@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../models/db');
-const { authMiddleware, generateToken } = require('../middleware/auth');
+const { authMiddleware, superAdminMiddleware, generateToken, ROLES } = require('../middleware/auth');
 const { createLogger, getClientInfo, logOperation, Actions, Modules } = require('../utils/logger');
 
 const router = express.Router();
@@ -51,7 +51,8 @@ router.post('/login', async (req, res) => {
         id: user.id,
         username: user.username,
         name: user.name,
-        role: user.role
+        role: user.role,
+        communityId: user.community_id
       }
     });
   } catch (error) {
@@ -64,7 +65,11 @@ router.post('/login', async (req, res) => {
 router.get('/me', authMiddleware, async (req, res) => {
   try {
     const [users] = await pool.query(
-      'SELECT id, username, name, role, created_at FROM users WHERE id = ?',
+      `SELECT u.id, u.username, u.name, u.role, u.community_id, u.created_at,
+              c.name as community_name
+       FROM users u
+       LEFT JOIN communities c ON u.community_id = c.id
+       WHERE u.id = ?`,
       [req.user.id]
     );
 
@@ -72,7 +77,16 @@ router.get('/me', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: '用户不存在' });
     }
 
-    res.json(users[0]);
+    const user = users[0];
+    res.json({
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      role: user.role,
+      communityId: user.community_id,
+      communityName: user.community_name,
+      createdAt: user.created_at
+    });
   } catch (error) {
     console.error('获取用户信息错误:', error);
     res.status(500).json({ error: '服务器错误' });
@@ -124,41 +138,68 @@ router.put('/password', authMiddleware, async (req, res) => {
   }
 });
 
-// 获取用户列表（仅管理员）
-router.get('/users', authMiddleware, async (req, res) => {
+// 获取用户列表（仅超级管理员）
+router.get('/users', authMiddleware, superAdminMiddleware, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: '需要管理员权限' });
-    }
-
     const [users] = await pool.query(
-      'SELECT id, username, name, role, created_at FROM users ORDER BY created_at DESC'
+      `SELECT u.id, u.username, u.name, u.role, u.community_id, u.created_at,
+              c.name as community_name
+       FROM users u
+       LEFT JOIN communities c ON u.community_id = c.id
+       ORDER BY u.created_at DESC`
     );
 
-    res.json(users);
+    res.json(users.map(user => ({
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      role: user.role,
+      communityId: user.community_id,
+      communityName: user.community_name,
+      createdAt: user.created_at
+    })));
   } catch (error) {
     console.error('获取用户列表错误:', error);
     res.status(500).json({ error: '服务器错误' });
   }
 });
 
-// 创建用户（仅管理员）
-router.post('/users', authMiddleware, async (req, res) => {
+// 创建用户（仅超级管理员）
+router.post('/users', authMiddleware, superAdminMiddleware, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: '需要管理员权限' });
-    }
-
-    const { username, password, name, role } = req.body;
+    const { username, password, name, role, communityId } = req.body;
 
     if (!username || !password) {
       return res.status(400).json({ error: '用户名和密码不能为空' });
     }
 
+    // 验证角色
+    const validRoles = [ROLES.SUPER_ADMIN, ROLES.COMMUNITY_ADMIN, ROLES.COMMUNITY_USER];
+    const userRole = role || ROLES.COMMUNITY_USER;
+    if (!validRoles.includes(userRole)) {
+      return res.status(400).json({ error: '无效的角色类型' });
+    }
+
+    // 非超级管理员必须指定小区
+    if (userRole !== ROLES.SUPER_ADMIN && !communityId) {
+      return res.status(400).json({ error: '小区管理员和普通用户必须指定所属小区' });
+    }
+
+    // 超级管理员不能指定小区
+    const finalCommunityId = userRole === ROLES.SUPER_ADMIN ? null : communityId;
+
+    // 验证小区是否存在
+    if (finalCommunityId) {
+      const [communities] = await pool.query('SELECT id FROM communities WHERE id = ?', [finalCommunityId]);
+      if (communities.length === 0) {
+        return res.status(400).json({ error: '指定的小区不存在' });
+      }
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
     const [result] = await pool.query(
-      'INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, ?)',
-      [username, hashedPassword, name || username, role || 'staff']
+      'INSERT INTO users (username, password, name, role, community_id) VALUES (?, ?, ?, ?, ?)',
+      [username, hashedPassword, name || username, userRole, finalCommunityId]
     );
 
     // 记录创建用户日志
@@ -167,14 +208,15 @@ router.post('/users', authMiddleware, async (req, res) => {
       targetType: 'user',
       targetId: result.insertId,
       targetName: username,
-      details: `创建用户: ${name || username} (${role || 'staff'})`,
+      details: `创建用户: ${name || username} (${userRole})${finalCommunityId ? `, 小区ID: ${finalCommunityId}` : ''}`,
     });
 
     res.status(201).json({
       id: result.insertId,
       username,
       name: name || username,
-      role: role || 'staff'
+      role: userRole,
+      communityId: finalCommunityId
     });
   } catch (error) {
     if (error.code === 'ER_DUP_ENTRY') {
@@ -185,23 +227,52 @@ router.post('/users', authMiddleware, async (req, res) => {
   }
 });
 
-// 更新用户（仅管理员）
-router.put('/users/:id', authMiddleware, async (req, res) => {
+// 更新用户（仅超级管理员）
+router.put('/users/:id', authMiddleware, superAdminMiddleware, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: '需要管理员权限' });
-    }
-
     const { id } = req.params;
-    const { name, role, password } = req.body;
+    const { name, role, password, communityId } = req.body;
 
     // 不能修改自己的角色
     if (parseInt(id) === req.user.id && role && role !== req.user.role) {
       return res.status(400).json({ error: '不能修改自己的角色' });
     }
 
-    let query = 'UPDATE users SET name = ?, role = ?';
-    let params = [name, role];
+    // 验证角色
+    if (role) {
+      const validRoles = [ROLES.SUPER_ADMIN, ROLES.COMMUNITY_ADMIN, ROLES.COMMUNITY_USER];
+      if (!validRoles.includes(role)) {
+        return res.status(400).json({ error: '无效的角色类型' });
+      }
+    }
+
+    // 获取当前用户信息
+    const [existingUsers] = await pool.query('SELECT * FROM users WHERE id = ?', [id]);
+    if (existingUsers.length === 0) {
+      return res.status(404).json({ error: '用户不存在' });
+    }
+    const existingUser = existingUsers[0];
+
+    const finalRole = role || existingUser.role;
+
+    // 非超级管理员必须有小区
+    let finalCommunityId;
+    if (finalRole === ROLES.SUPER_ADMIN) {
+      finalCommunityId = null;
+    } else {
+      finalCommunityId = communityId !== undefined ? communityId : existingUser.community_id;
+      if (!finalCommunityId) {
+        return res.status(400).json({ error: '小区管理员和普通用户必须指定所属小区' });
+      }
+      // 验证小区是否存在
+      const [communities] = await pool.query('SELECT id FROM communities WHERE id = ?', [finalCommunityId]);
+      if (communities.length === 0) {
+        return res.status(400).json({ error: '指定的小区不存在' });
+      }
+    }
+
+    let query = 'UPDATE users SET name = ?, role = ?, community_id = ?';
+    let params = [name || existingUser.name, finalRole, finalCommunityId];
 
     if (password) {
       const hashedPassword = await bcrypt.hash(password, 10);
@@ -219,11 +290,12 @@ router.put('/users/:id', authMiddleware, async (req, res) => {
     const changes = [];
     if (name) changes.push(`姓名: ${name}`);
     if (role) changes.push(`角色: ${role}`);
+    if (communityId !== undefined) changes.push(`小区ID: ${finalCommunityId}`);
     if (password) changes.push('密码已重置');
     await log(Actions.UPDATE, Modules.USER, {
       targetType: 'user',
       targetId: parseInt(id),
-      targetName: name,
+      targetName: name || existingUser.name,
       details: `更新用户信息: ${changes.join(', ')}`,
     });
 
@@ -234,13 +306,9 @@ router.put('/users/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// 删除用户（仅管理员）
-router.delete('/users/:id', authMiddleware, async (req, res) => {
+// 删除用户（仅超级管理员）
+router.delete('/users/:id', authMiddleware, superAdminMiddleware, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: '需要管理员权限' });
-    }
-
     const { id } = req.params;
 
     // 不能删除自己
@@ -252,6 +320,10 @@ router.delete('/users/:id', authMiddleware, async (req, res) => {
     const [users] = await pool.query('SELECT username, name FROM users WHERE id = ?', [id]);
     const deletedUser = users[0];
 
+    if (!deletedUser) {
+      return res.status(404).json({ error: '用户不存在' });
+    }
+
     await pool.query('DELETE FROM users WHERE id = ?', [id]);
 
     // 记录删除用户日志
@@ -259,8 +331,8 @@ router.delete('/users/:id', authMiddleware, async (req, res) => {
     await log(Actions.DELETE, Modules.USER, {
       targetType: 'user',
       targetId: parseInt(id),
-      targetName: deletedUser?.username,
-      details: `删除用户: ${deletedUser?.name || deletedUser?.username}`,
+      targetName: deletedUser.username,
+      details: `删除用户: ${deletedUser.name || deletedUser.username}`,
     });
 
     res.json({ message: '用户删除成功' });

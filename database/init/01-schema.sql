@@ -2,12 +2,17 @@
 -- Docker MySQL 容器启动时自动执行
 
 -- 1. 系统用户表
+-- 角色说明：
+--   super_admin: 超级管理员，可以查看和管理所有小区，community_id 为 NULL
+--   community_admin: 小区管理员，可以查看和管理本小区的数据
+--   community_user: 小区普通用户，只能查看本小区的数据
 CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   username VARCHAR(50) UNIQUE NOT NULL,
   password VARCHAR(255) NOT NULL,
   name VARCHAR(100),
-  role ENUM('admin', 'staff') DEFAULT 'staff',
+  role ENUM('super_admin', 'community_admin', 'community_user') DEFAULT 'community_user',
+  community_id INT DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -120,3 +125,10 @@ CREATE INDEX idx_owners_building ON owners(building);
 CREATE INDEX idx_owners_name ON owners(owner_name);
 CREATE INDEX idx_votes_round ON votes(round_id);
 CREATE INDEX idx_votes_status ON votes(vote_status);
+CREATE INDEX idx_users_community ON users(community_id);
+CREATE INDEX idx_users_role ON users(role);
+
+-- 添加 users 表的外键约束（在 communities 表创建后）
+ALTER TABLE users
+ADD CONSTRAINT fk_users_community
+FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE SET NULL;

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { authApi, logsApi } from '@/lib/api';
+import { authApi, logsApi, communityApi } from '@/lib/api';
 import {
   User, Lock, Check, Settings, Users, Plus, Edit, Trash2, X, Loader2,
   Shield, UserCog, ClipboardList, Search, Calendar, ChevronLeft, ChevronRight,
@@ -15,8 +15,22 @@ interface SystemUser {
   username: string;
   name: string;
   role: string;
-  created_at: string;
+  communityId: number | null;
+  communityName: string | null;
+  createdAt: string;
 }
+
+interface Community {
+  id: number;
+  name: string;
+}
+
+// 角色映射
+const ROLE_LABELS: Record<string, { label: string; color: string }> = {
+  super_admin: { label: '超级管理员', color: 'bg-purple-100 text-purple-700' },
+  community_admin: { label: '小区管理员', color: 'bg-blue-100 text-blue-700' },
+  community_user: { label: '普通用户', color: 'bg-slate-100 text-slate-600' },
+};
 
 interface OperationLog {
   id: number;
@@ -69,10 +83,12 @@ export default function SettingsPage() {
     username: '',
     password: '',
     name: '',
-    role: 'staff',
+    role: 'community_user',
+    communityId: '' as string | number,
   });
   const [userFormLoading, setUserFormLoading] = useState(false);
   const [userFormError, setUserFormError] = useState('');
+  const [communities, setCommunities] = useState<Community[]>([]);
 
   // 密码修改
   const [oldPassword, setOldPassword] = useState('');
@@ -103,11 +119,15 @@ export default function SettingsPage() {
     modules: string[];
   }>({ actions: [], modules: [] });
 
+  // 检查是否是超级管理员
+  const isSuperAdmin = user?.role === 'super_admin';
+
   useEffect(() => {
-    if (activeTab === 'users' && user?.role === 'admin') {
+    if (activeTab === 'users' && isSuperAdmin) {
       loadUsers();
+      loadCommunities();
     }
-    if (activeTab === 'logs' && user?.role === 'admin') {
+    if (activeTab === 'logs' && isSuperAdmin) {
       loadLogs();
       loadFilterOptions();
     }
@@ -122,6 +142,15 @@ export default function SettingsPage() {
       console.error('加载用户列表失败:', error);
     } finally {
       setUsersLoading(false);
+    }
+  };
+
+  const loadCommunities = async () => {
+    try {
+      const response = await communityApi.getAll();
+      setCommunities(response.data);
+    } catch (error) {
+      console.error('加载小区列表失败:', error);
     }
   };
 
@@ -200,6 +229,7 @@ export default function SettingsPage() {
         password: '',
         name: userToEdit.name,
         role: userToEdit.role,
+        communityId: userToEdit.communityId || '',
       });
     } else {
       setEditingUser(null);
@@ -207,7 +237,8 @@ export default function SettingsPage() {
         username: '',
         password: '',
         name: '',
-        role: 'staff',
+        role: 'community_user',
+        communityId: '',
       });
     }
     setUserFormError('');
@@ -228,13 +259,24 @@ export default function SettingsPage() {
       }
     }
 
+    // 非超级管理员必须选择小区
+    if (userForm.role !== 'super_admin' && !userForm.communityId) {
+      setUserFormError('请选择所属小区');
+      return;
+    }
+
     try {
       setUserFormLoading(true);
+      const communityIdValue = userForm.role === 'super_admin'
+        ? null
+        : (typeof userForm.communityId === 'number' ? userForm.communityId : null);
+
       if (editingUser) {
         await authApi.updateUser(editingUser.id, {
           name: userForm.name,
           role: userForm.role,
           password: userForm.password || undefined,
+          communityId: communityIdValue,
         });
       } else {
         await authApi.createUser({
@@ -242,6 +284,7 @@ export default function SettingsPage() {
           password: userForm.password,
           name: userForm.name || userForm.username,
           role: userForm.role,
+          communityId: communityIdValue,
         });
       }
       setShowUserForm(false);
@@ -327,7 +370,7 @@ export default function SettingsPage() {
               <Lock className="w-5 h-5" />
               <span className="font-medium">修改密码</span>
             </button>
-            {user?.role === 'admin' && (
+            {isSuperAdmin && (
               <>
                 <button
                   onClick={() => setActiveTab('users')}
@@ -402,15 +445,27 @@ export default function SettingsPage() {
                     <div className="flex items-center gap-2">
                       <span className={cn(
                         'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium',
-                        user?.role === 'admin'
-                          ? 'bg-purple-100 text-purple-700'
-                          : 'bg-slate-100 text-slate-600'
+                        ROLE_LABELS[user?.role || '']?.color || 'bg-slate-100 text-slate-600'
                       )}>
                         <Shield className="w-4 h-4" />
-                        {user?.role === 'admin' ? '管理员' : '普通用户'}
+                        {ROLE_LABELS[user?.role || '']?.label || user?.role}
                       </span>
                     </div>
                   </div>
+
+                  {user?.communityName && (
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        所属小区
+                      </label>
+                      <input
+                        type="text"
+                        value={user.communityName}
+                        disabled
+                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-500"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -488,7 +543,7 @@ export default function SettingsPage() {
               </div>
             )}
 
-            {activeTab === 'users' && user?.role === 'admin' && (
+            {activeTab === 'users' && isSuperAdmin && (
               <div className="p-6 space-y-6">
                 <div className="flex items-center justify-between pb-4 border-b border-slate-100">
                   <div className="flex items-center gap-3">
@@ -512,14 +567,19 @@ export default function SettingsPage() {
                   </div>
                 ) : (
                   <div className="divide-y divide-slate-100">
-                    {users.map((u) => (
+                    {users.map((u) => {
+                      const roleInfo = ROLE_LABELS[u.role] || { label: u.role, color: 'bg-slate-100 text-slate-600' };
+                      const avatarGradient = u.role === 'super_admin'
+                        ? 'bg-gradient-to-br from-purple-500 to-purple-600'
+                        : u.role === 'community_admin'
+                          ? 'bg-gradient-to-br from-blue-500 to-blue-600'
+                          : 'bg-gradient-to-br from-slate-400 to-slate-500';
+                      return (
                       <div key={u.id} className="py-4 flex items-center justify-between group">
                         <div className="flex items-center gap-4">
                           <div className={cn(
                             'w-10 h-10 rounded-xl flex items-center justify-center text-white font-semibold',
-                            u.role === 'admin'
-                              ? 'bg-gradient-to-br from-purple-500 to-purple-600'
-                              : 'bg-gradient-to-br from-slate-400 to-slate-500'
+                            avatarGradient
                           )}>
                             {(u.name || u.username).charAt(0).toUpperCase()}
                           </div>
@@ -528,14 +588,16 @@ export default function SettingsPage() {
                               <p className="font-medium text-slate-900">{u.name || u.username}</p>
                               <span className={cn(
                                 'px-2 py-0.5 rounded-full text-xs font-medium',
-                                u.role === 'admin'
-                                  ? 'bg-purple-100 text-purple-700'
-                                  : 'bg-slate-100 text-slate-600'
+                                roleInfo.color
                               )}>
-                                {u.role === 'admin' ? '管理员' : '普通用户'}
+                                {roleInfo.label}
                               </span>
                             </div>
-                            <p className="text-sm text-slate-500">@{u.username} · 创建于 {formatDate(u.created_at)}</p>
+                            <p className="text-sm text-slate-500">
+                              @{u.username}
+                              {u.communityName && <span> · {u.communityName}</span>}
+                              <span> · 创建于 {formatDate(u.createdAt)}</span>
+                            </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -557,7 +619,8 @@ export default function SettingsPage() {
                           )}
                         </div>
                       </div>
-                    ))}
+                    );
+                    })}
                     {users.length === 0 && (
                       <div className="py-12 text-center">
                         <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
@@ -571,7 +634,7 @@ export default function SettingsPage() {
               </div>
             )}
 
-            {activeTab === 'logs' && user?.role === 'admin' && (
+            {activeTab === 'logs' && isSuperAdmin && (
               <div className="p-6 space-y-6">
                 <div className="flex items-center gap-3 pb-4 border-b border-slate-100">
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center">
@@ -797,17 +860,36 @@ export default function SettingsPage() {
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
-                  角色
+                  角色 <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={userForm.role}
-                  onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
+                  onChange={(e) => setUserForm({ ...userForm, role: e.target.value, communityId: e.target.value === 'super_admin' ? '' : userForm.communityId })}
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer"
                 >
-                  <option value="staff">普通用户</option>
-                  <option value="admin">管理员</option>
+                  <option value="super_admin">超级管理员</option>
+                  <option value="community_admin">小区管理员</option>
+                  <option value="community_user">普通用户</option>
                 </select>
               </div>
+
+              {userForm.role !== 'super_admin' && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    所属小区 <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={userForm.communityId}
+                    onChange={(e) => setUserForm({ ...userForm, communityId: e.target.value ? parseInt(e.target.value) : '' })}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer"
+                  >
+                    <option value="">请选择小区</option>
+                    {communities.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className="flex gap-3 pt-2">
                 <button

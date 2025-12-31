@@ -1,8 +1,9 @@
 -- 初始化数据
 
--- 插入默认管理员账户 (密码: admin123)
-INSERT INTO users (username, password, name, role) VALUES
-('admin', '$2a$10$r52knN1WReUMaI3yLGcDVeSAPc5m.HbslMUuwFB6084KN5DeE5.5C', '系统管理员', 'admin');
+-- 插入默认超级管理员账户 (密码: admin123)
+-- super_admin 不需要关联小区，community_id 为 NULL
+INSERT INTO users (username, password, name, role, community_id) VALUES
+('admin', '$2a$10$r52knN1WReUMaI3yLGcDVeSAPc5m.HbslMUuwFB6084KN5DeE5.5C', '超级管理员', 'super_admin', NULL);
 
 -- 插入示例小区数据
 INSERT INTO communities (name, address) VALUES

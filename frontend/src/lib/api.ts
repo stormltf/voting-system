@@ -44,9 +44,9 @@ export const authApi = {
     api.put('/auth/password', { oldPassword, newPassword }),
   // 用户管理
   getUsers: () => api.get('/auth/users'),
-  createUser: (data: { username: string; password: string; name?: string; role?: string }) =>
+  createUser: (data: { username: string; password: string; name?: string; role?: string; communityId?: number | null }) =>
     api.post('/auth/users', data),
-  updateUser: (id: number, data: { name?: string; role?: string; password?: string }) =>
+  updateUser: (id: number, data: { name?: string; role?: string; password?: string; communityId?: number | null }) =>
     api.put(`/auth/users/${id}`, data),
   deleteUser: (id: number) => api.delete(`/auth/users/${id}`),
 };
@@ -82,6 +82,7 @@ export const ownerApi = {
     });
   },
   getBuildings: (phaseId: number) => api.get(`/owners/buildings/${phaseId}`),
+  getUnits: (phaseId: number, building: string) => api.get(`/owners/units/${phaseId}/${building}`),
 };
 
 // 投票 API
@@ -112,6 +113,9 @@ export const voteApi = {
   // 统计
   getStats: (params?: any) => api.get('/votes/stats', { params }),
   getProgress: (params?: any) => api.get('/votes/progress', { params }),
+  // 楼栋可视化
+  getUnitRooms: (params: { round_id: number; phase_id: number; building: string; unit: string }) =>
+    api.get('/votes/unit-rooms', { params }),
 };
 
 // 操作日志 API

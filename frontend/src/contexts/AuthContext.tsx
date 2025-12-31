@@ -8,6 +8,8 @@ interface User {
   username: string;
   name: string;
   role: string;
+  communityId: number | null;
+  communityName: string | null;
 }
 
 interface AuthContextType {

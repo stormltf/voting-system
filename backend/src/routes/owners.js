@@ -2,10 +2,34 @@ const express = require('express');
 const multer = require('multer');
 const XLSX = require('xlsx');
 const { pool } = require('../models/db');
-const { authMiddleware } = require('../middleware/auth');
+const {
+  authMiddleware,
+  adminMiddleware,
+  ROLES,
+  isSuperAdmin,
+  canAccessCommunity,
+  canManageCommunity
+} = require('../middleware/auth');
 const { createLogger, Actions, Modules } = require('../utils/logger');
 
 const router = express.Router();
+
+// 辅助函数：通过 phase_id 获取 community_id
+async function getCommunityIdByPhase(phaseId) {
+  const [phases] = await pool.query('SELECT community_id FROM phases WHERE id = ?', [phaseId]);
+  return phases.length > 0 ? phases[0].community_id : null;
+}
+
+// 辅助函数：通过 owner_id 获取 community_id
+async function getCommunityIdByOwner(ownerId) {
+  const [owners] = await pool.query(`
+    SELECT p.community_id
+    FROM owners o
+    JOIN phases p ON o.phase_id = p.id
+    WHERE o.id = ?
+  `, [ownerId]);
+  return owners.length > 0 ? owners[0].community_id : null;
+}
 
 // 配置文件上传
 const upload = multer({
@@ -33,7 +57,12 @@ router.get('/', authMiddleware, async (req, res) => {
     let whereConditions = ['1=1'];
     let params = [];
 
-    if (community_id) {
+    // 非超级管理员只能查看自己小区的数据
+    if (!isSuperAdmin(req.user)) {
+      whereConditions.push('p.community_id = ?');
+      params.push(req.user.communityId);
+    } else if (community_id) {
+      // 超级管理员可以按小区筛选
       whereConditions.push('p.community_id = ?');
       params.push(community_id);
     }
@@ -124,6 +153,8 @@ router.get('/', authMiddleware, async (req, res) => {
 // 获取单个业主详情
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
+    const ownerId = parseInt(req.params.id);
+
     const [owners] = await pool.query(`
       SELECT o.*, p.name as phase_name, p.code as phase_code,
              c.name as community_name, c.id as community_id
@@ -131,10 +162,15 @@ router.get('/:id', authMiddleware, async (req, res) => {
       JOIN phases p ON o.phase_id = p.id
       JOIN communities c ON p.community_id = c.id
       WHERE o.id = ?
-    `, [req.params.id]);
+    `, [ownerId]);
 
     if (owners.length === 0) {
       return res.status(404).json({ error: '业主不存在' });
+    }
+
+    // 检查访问权限
+    if (!canAccessCommunity(req.user, owners[0].community_id)) {
+      return res.status(403).json({ error: '无权访问该小区数据' });
     }
 
     // 获取所有投票记录
@@ -144,7 +180,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
       JOIN vote_rounds r ON v.round_id = r.id
       WHERE v.owner_id = ?
       ORDER BY r.year DESC, r.round_code DESC
-    `, [req.params.id]);
+    `, [ownerId]);
 
     res.json({
       ...owners[0],
@@ -156,8 +192,8 @@ router.get('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// 创建业主
-router.post('/', authMiddleware, async (req, res) => {
+// 创建业主（管理员可操作）
+router.post('/', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const {
       phase_id, seq_no, building, unit, room, room_number,
@@ -167,6 +203,15 @@ router.post('/', authMiddleware, async (req, res) => {
 
     if (!phase_id || !room_number) {
       return res.status(400).json({ error: '期数和房间号不能为空' });
+    }
+
+    // 检查管理权限
+    const communityId = await getCommunityIdByPhase(phase_id);
+    if (!communityId) {
+      return res.status(400).json({ error: '指定的期数不存在' });
+    }
+    if (!canManageCommunity(req.user, communityId)) {
+      return res.status(403).json({ error: '无权管理该小区数据' });
     }
 
     const [result] = await pool.query(`
@@ -197,16 +242,27 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
-// 更新业主
-router.put('/:id', authMiddleware, async (req, res) => {
+// 更新业主（管理员可操作）
+router.put('/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
+    const ownerId = parseInt(req.params.id);
+
+    // 检查管理权限
+    const communityId = await getCommunityIdByOwner(ownerId);
+    if (!communityId) {
+      return res.status(404).json({ error: '业主不存在' });
+    }
+    if (!canManageCommunity(req.user, communityId)) {
+      return res.status(403).json({ error: '无权管理该小区数据' });
+    }
+
     const {
       seq_no, building, unit, room, room_number,
       owner_name, area, parking_no, parking_area,
       phone1, phone2, phone3, wechat_status, wechat_contact, house_status
     } = req.body;
 
-    const [result] = await pool.query(`
+    await pool.query(`
       UPDATE owners SET
         seq_no = ?, building = ?, unit = ?, room = ?, room_number = ?,
         owner_name = ?, area = ?, parking_no = ?, parking_area = ?,
@@ -216,22 +272,18 @@ router.put('/:id', authMiddleware, async (req, res) => {
     `, [seq_no, building, unit, room, room_number,
       owner_name, area, parking_no, parking_area,
       phone1, phone2, phone3, wechat_status, wechat_contact, house_status,
-      req.params.id]);
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: '业主不存在' });
-    }
+      ownerId]);
 
     // 记录日志
     const log = createLogger(req);
     await log(Actions.UPDATE, Modules.OWNER, {
       targetType: 'owner',
-      targetId: parseInt(req.params.id),
+      targetId: ownerId,
       targetName: room_number,
       details: `更新业主: ${room_number} - ${owner_name || ''}`,
     });
 
-    res.json({ id: parseInt(req.params.id), ...req.body });
+    res.json({ id: ownerId, ...req.body });
   } catch (error) {
     if (error.code === 'ER_DUP_ENTRY') {
       return res.status(400).json({ error: '该房间号已存在' });
@@ -241,29 +293,33 @@ router.put('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// 删除业主
-router.delete('/:id', authMiddleware, async (req, res) => {
+// 删除业主（管理员可操作）
+router.delete('/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    // 获取要删除的业主信息（用于日志）
-    const [owners] = await pool.query('SELECT room_number, owner_name FROM owners WHERE id = ?', [req.params.id]);
-    const deletedOwner = owners[0];
+    const ownerId = parseInt(req.params.id);
 
-    const [result] = await pool.query(
-      'DELETE FROM owners WHERE id = ?',
-      [req.params.id]
-    );
-
-    if (result.affectedRows === 0) {
+    // 检查管理权限
+    const communityId = await getCommunityIdByOwner(ownerId);
+    if (!communityId) {
       return res.status(404).json({ error: '业主不存在' });
     }
+    if (!canManageCommunity(req.user, communityId)) {
+      return res.status(403).json({ error: '无权管理该小区数据' });
+    }
+
+    // 获取要删除的业主信息（用于日志）
+    const [owners] = await pool.query('SELECT room_number, owner_name FROM owners WHERE id = ?', [ownerId]);
+    const deletedOwner = owners[0];
+
+    await pool.query('DELETE FROM owners WHERE id = ?', [ownerId]);
 
     // 记录日志
     const log = createLogger(req);
     await log(Actions.DELETE, Modules.OWNER, {
       targetType: 'owner',
-      targetId: parseInt(req.params.id),
-      targetName: deletedOwner?.room_number,
-      details: `删除业主: ${deletedOwner?.room_number} - ${deletedOwner?.owner_name || ''}`,
+      targetId: ownerId,
+      targetName: deletedOwner.room_number,
+      details: `删除业主: ${deletedOwner.room_number} - ${deletedOwner.owner_name || ''}`,
     });
 
     res.json({ message: '删除成功' });
@@ -273,8 +329,8 @@ router.delete('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// 批量导入业主数据
-router.post('/import', authMiddleware, upload.single('file'), async (req, res) => {
+// 批量导入业主数据（管理员可操作）
+router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: '请上传文件' });
@@ -283,6 +339,15 @@ router.post('/import', authMiddleware, upload.single('file'), async (req, res) =
     const { phase_id } = req.body;
     if (!phase_id) {
       return res.status(400).json({ error: '请指定期数' });
+    }
+
+    // 检查管理权限
+    const communityId = await getCommunityIdByPhase(phase_id);
+    if (!communityId) {
+      return res.status(400).json({ error: '指定的期数不存在' });
+    }
+    if (!canManageCommunity(req.user, communityId)) {
+      return res.status(403).json({ error: '无权管理该小区数据' });
     }
 
     // 解析 Excel 文件
@@ -422,16 +487,55 @@ router.post('/import', authMiddleware, upload.single('file'), async (req, res) =
 // 获取楼栋列表
 router.get('/buildings/:phaseId', authMiddleware, async (req, res) => {
   try {
+    const phaseId = parseInt(req.params.phaseId);
+
+    // 检查访问权限
+    const communityId = await getCommunityIdByPhase(phaseId);
+    if (!communityId) {
+      return res.status(404).json({ error: '期数不存在' });
+    }
+    if (!canAccessCommunity(req.user, communityId)) {
+      return res.status(403).json({ error: '无权访问该小区数据' });
+    }
+
     const [buildings] = await pool.query(`
       SELECT DISTINCT building
       FROM owners
       WHERE phase_id = ? AND building IS NOT NULL
       ORDER BY building
-    `, [req.params.phaseId]);
+    `, [phaseId]);
 
     res.json(buildings.map(b => b.building));
   } catch (error) {
     console.error('获取楼栋列表错误:', error);
+    res.status(500).json({ error: '服务器错误' });
+  }
+});
+
+// 获取单元列表
+router.get('/units/:phaseId/:building', authMiddleware, async (req, res) => {
+  try {
+    const phaseId = parseInt(req.params.phaseId);
+
+    // 检查访问权限
+    const communityId = await getCommunityIdByPhase(phaseId);
+    if (!communityId) {
+      return res.status(404).json({ error: '期数不存在' });
+    }
+    if (!canAccessCommunity(req.user, communityId)) {
+      return res.status(403).json({ error: '无权访问该小区数据' });
+    }
+
+    const [units] = await pool.query(`
+      SELECT DISTINCT unit
+      FROM owners
+      WHERE phase_id = ? AND building = ? AND unit IS NOT NULL
+      ORDER BY unit
+    `, [phaseId, req.params.building]);
+
+    res.json(units.map(u => u.unit));
+  } catch (error) {
+    console.error('获取单元列表错误:', error);
     res.status(500).json({ error: '服务器错误' });
   }
 });

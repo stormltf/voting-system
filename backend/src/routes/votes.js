@@ -2,7 +2,14 @@ const express = require('express');
 const multer = require('multer');
 const XLSX = require('xlsx');
 const { pool } = require('../models/db');
-const { authMiddleware } = require('../middleware/auth');
+const {
+  authMiddleware,
+  adminMiddleware,
+  ROLES,
+  isSuperAdmin,
+  canAccessCommunity,
+  canManageCommunity
+} = require('../middleware/auth');
 const { createLogger, Actions, Modules } = require('../utils/logger');
 
 const router = express.Router();
@@ -11,9 +18,15 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 限制 5MB
 });
 
+// 辅助函数：获取投票轮次的小区ID
+async function getCommunityIdByRound(roundId) {
+  const [rounds] = await pool.query('SELECT community_id FROM vote_rounds WHERE id = ?', [roundId]);
+  return rounds.length > 0 ? rounds[0].community_id : null;
+}
+
 // ===== 投票轮次管理 =====
 
-// 获取所有投票轮次
+// 获取所有投票轮次（超级管理员看所有，其他用户只看自己小区的）
 router.get('/rounds', authMiddleware, async (req, res) => {
   try {
     const { community_id } = req.query;
@@ -21,7 +34,11 @@ router.get('/rounds', authMiddleware, async (req, res) => {
     let whereClause = '1=1';
     let params = [];
 
-    if (community_id) {
+    // 非超级管理员只能看到自己小区的投票轮次
+    if (!isSuperAdmin(req.user)) {
+      whereClause += ' AND r.community_id = ?';
+      params.push(req.user.communityId);
+    } else if (community_id) {
       whereClause += ' AND r.community_id = ?';
       params.push(community_id);
     }
@@ -45,15 +62,22 @@ router.get('/rounds', authMiddleware, async (req, res) => {
 // 获取单个投票轮次
 router.get('/rounds/:id', authMiddleware, async (req, res) => {
   try {
+    const roundId = parseInt(req.params.id);
+
     const [rounds] = await pool.query(`
       SELECT r.*, c.name as community_name
       FROM vote_rounds r
       LEFT JOIN communities c ON r.community_id = c.id
       WHERE r.id = ?
-    `, [req.params.id]);
+    `, [roundId]);
 
     if (rounds.length === 0) {
       return res.status(404).json({ error: '投票轮次不存在' });
+    }
+
+    // 检查访问权限
+    if (!canAccessCommunity(req.user, rounds[0].community_id)) {
+      return res.status(403).json({ error: '无权访问该投票轮次' });
     }
 
     res.json(rounds[0]);
@@ -63,13 +87,18 @@ router.get('/rounds/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// 创建投票轮次
-router.post('/rounds', authMiddleware, async (req, res) => {
+// 创建投票轮次（管理员可操作）
+router.post('/rounds', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { community_id, name, year, round_code, start_date, end_date, status, description } = req.body;
 
     if (!community_id) {
       return res.status(400).json({ error: '请选择小区' });
+    }
+
+    // 检查管理权限
+    if (!canManageCommunity(req.user, community_id)) {
+      return res.status(403).json({ error: '无权管理该小区' });
     }
 
     if (!name || !year) {
@@ -101,61 +130,74 @@ router.post('/rounds', authMiddleware, async (req, res) => {
   }
 });
 
-// 更新投票轮次
-router.put('/rounds/:id', authMiddleware, async (req, res) => {
+// 更新投票轮次（管理员可操作）
+router.put('/rounds/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
+    const roundId = parseInt(req.params.id);
+
+    // 获取轮次所属小区
+    const communityId = await getCommunityIdByRound(roundId);
+    if (!communityId) {
+      return res.status(404).json({ error: '投票轮次不存在' });
+    }
+
+    // 检查管理权限
+    if (!canManageCommunity(req.user, communityId)) {
+      return res.status(403).json({ error: '无权管理该投票轮次' });
+    }
+
     const { name, year, round_code, start_date, end_date, status, description } = req.body;
 
-    const [result] = await pool.query(`
+    await pool.query(`
       UPDATE vote_rounds SET
         name = ?, year = ?, round_code = ?, start_date = ?,
         end_date = ?, status = ?, description = ?
       WHERE id = ?
-    `, [name, year, round_code, start_date, end_date, status, description, req.params.id]);
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: '投票轮次不存在' });
-    }
+    `, [name, year, round_code, start_date, end_date, status, description, roundId]);
 
     // 记录日志
     const log = createLogger(req);
     await log(Actions.UPDATE, Modules.VOTE_ROUND, {
       targetType: 'vote_round',
-      targetId: parseInt(req.params.id),
+      targetId: roundId,
       targetName: name,
       details: `更新投票轮次: ${name} (状态: ${status})`,
     });
 
-    res.json({ id: parseInt(req.params.id), ...req.body });
+    res.json({ id: roundId, ...req.body });
   } catch (error) {
     console.error('更新投票轮次错误:', error);
     res.status(500).json({ error: '服务器错误' });
   }
 });
 
-// 删除投票轮次
-router.delete('/rounds/:id', authMiddleware, async (req, res) => {
+// 删除投票轮次（管理员可操作）
+router.delete('/rounds/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    // 获取要删除的轮次信息（用于日志）
-    const [rounds] = await pool.query('SELECT name, year, round_code FROM vote_rounds WHERE id = ?', [req.params.id]);
-    const deletedRound = rounds[0];
+    const roundId = parseInt(req.params.id);
 
-    const [result] = await pool.query(
-      'DELETE FROM vote_rounds WHERE id = ?',
-      [req.params.id]
-    );
-
-    if (result.affectedRows === 0) {
+    // 获取要删除的轮次信息
+    const [rounds] = await pool.query('SELECT name, year, round_code, community_id FROM vote_rounds WHERE id = ?', [roundId]);
+    if (rounds.length === 0) {
       return res.status(404).json({ error: '投票轮次不存在' });
     }
+
+    const deletedRound = rounds[0];
+
+    // 检查管理权限
+    if (!canManageCommunity(req.user, deletedRound.community_id)) {
+      return res.status(403).json({ error: '无权删除该投票轮次' });
+    }
+
+    await pool.query('DELETE FROM vote_rounds WHERE id = ?', [roundId]);
 
     // 记录日志
     const log = createLogger(req);
     await log(Actions.DELETE, Modules.VOTE_ROUND, {
       targetType: 'vote_round',
-      targetId: parseInt(req.params.id),
-      targetName: deletedRound?.name,
-      details: `删除投票轮次: ${deletedRound?.name}`,
+      targetId: roundId,
+      targetName: deletedRound.name,
+      details: `删除投票轮次: ${deletedRound.name}`,
     });
 
     res.json({ message: '删除成功' });
@@ -181,7 +223,11 @@ router.get('/', authMiddleware, async (req, res) => {
       params.push(round_id);
     }
 
-    if (community_id) {
+    // 非超级管理员只能看到自己小区的投票记录
+    if (!isSuperAdmin(req.user)) {
+      whereConditions.push('p.community_id = ?');
+      params.push(req.user.communityId);
+    } else if (community_id) {
       whereConditions.push('p.community_id = ?');
       params.push(community_id);
     }
@@ -243,13 +289,22 @@ router.get('/', authMiddleware, async (req, res) => {
   }
 });
 
-// 创建或更新投票记录
-router.post('/', authMiddleware, async (req, res) => {
+// 创建或更新投票记录（管理员可操作）
+router.post('/', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { owner_id, round_id, vote_status, vote_phone, vote_date, remark, sweep_status } = req.body;
 
     if (!owner_id || !round_id) {
       return res.status(400).json({ error: '业主ID和投票轮次不能为空' });
+    }
+
+    // 获取轮次所属小区并检查权限
+    const communityId = await getCommunityIdByRound(round_id);
+    if (!communityId) {
+      return res.status(400).json({ error: '投票轮次不存在' });
+    }
+    if (!canManageCommunity(req.user, communityId)) {
+      return res.status(403).json({ error: '无权管理该投票轮次' });
     }
 
     const [result] = await pool.query(`
@@ -286,8 +341,8 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
-// 批量更新投票状态
-router.put('/batch', authMiddleware, async (req, res) => {
+// 批量更新投票状态（管理员可操作）
+router.put('/batch', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { owner_ids, round_id, vote_status, vote_date } = req.body;
 
@@ -297,6 +352,15 @@ router.put('/batch', authMiddleware, async (req, res) => {
 
     if (!round_id) {
       return res.status(400).json({ error: '请选择投票轮次' });
+    }
+
+    // 检查权限
+    const communityId = await getCommunityIdByRound(round_id);
+    if (!communityId) {
+      return res.status(400).json({ error: '投票轮次不存在' });
+    }
+    if (!canManageCommunity(req.user, communityId)) {
+      return res.status(403).json({ error: '无权管理该投票轮次' });
     }
 
     let successCount = 0;
@@ -338,13 +402,18 @@ router.put('/batch', authMiddleware, async (req, res) => {
 
 // ===== 初始化和导入 =====
 
-// 一键初始化投票记录（为所有业主创建待投票记录）
-router.post('/init', authMiddleware, async (req, res) => {
+// 一键初始化投票记录（为所有业主创建待投票记录）（管理员可操作）
+router.post('/init', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { round_id, community_id } = req.body;
 
     if (!round_id || !community_id) {
       return res.status(400).json({ error: '请选择投票轮次和小区' });
+    }
+
+    // 检查权限
+    if (!canManageCommunity(req.user, community_id)) {
+      return res.status(403).json({ error: '无权管理该小区' });
     }
 
     // 获取该小区所有业主
@@ -400,8 +469,8 @@ router.post('/init', authMiddleware, async (req, res) => {
   }
 });
 
-// Excel 批量导入投票状态
-router.post('/import', authMiddleware, upload.single('file'), async (req, res) => {
+// Excel 批量导入投票状态（管理员可操作）
+router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), async (req, res) => {
   try {
     const { round_id, community_id, vote_column } = req.body;
 
@@ -411,6 +480,11 @@ router.post('/import', authMiddleware, upload.single('file'), async (req, res) =
 
     if (!round_id || !community_id) {
       return res.status(400).json({ error: '请选择投票轮次和小区' });
+    }
+
+    // 检查权限
+    if (!canManageCommunity(req.user, community_id)) {
+      return res.status(403).json({ error: '无权管理该小区' });
     }
 
     // 解析 Excel
@@ -550,6 +624,131 @@ router.post('/import', authMiddleware, upload.single('file'), async (req, res) =
   }
 });
 
+// ===== 楼栋可视化 =====
+
+// 获取某单元的详细房间投票数据（用于楼层图可视化）
+router.get('/unit-rooms', authMiddleware, async (req, res) => {
+  try {
+    const { round_id, phase_id, building, unit } = req.query;
+
+    if (!round_id || !phase_id || !building || !unit) {
+      return res.status(400).json({ error: '缺少必要参数: round_id, phase_id, building, unit' });
+    }
+
+    // 查询该单元所有业主及其投票状态
+    const [rooms] = await pool.query(`
+      SELECT
+        o.id as owner_id,
+        o.room_number,
+        o.room,
+        o.owner_name,
+        o.phone1,
+        o.area,
+        o.parking_no,
+        COALESCE(v.vote_status, 'pending') as vote_status,
+        v.vote_date,
+        v.remark,
+        v.sweep_status,
+        p.name as phase_name,
+        r.name as round_name
+      FROM owners o
+      JOIN phases p ON o.phase_id = p.id
+      LEFT JOIN votes v ON o.id = v.owner_id AND v.round_id = ?
+      LEFT JOIN vote_rounds r ON r.id = ?
+      WHERE o.phase_id = ? AND o.building = ? AND o.unit = ?
+      ORDER BY o.room ASC
+    `, [round_id, round_id, phase_id, building, unit]);
+
+    if (rooms.length === 0) {
+      return res.json({
+        meta: {
+          phase_name: '',
+          building,
+          unit,
+          round_name: '',
+          total_rooms: 0,
+          voted_count: 0,
+          refused_count: 0,
+          pending_count: 0,
+          sweep_count: 0
+        },
+        floors: {},
+        stats: { max_floor: 0, max_rooms_per_floor: 0 }
+      });
+    }
+
+    // 解析楼层信息并分组
+    const floors = {};
+    let maxFloor = 0;
+    let maxRoomsPerFloor = 0;
+
+    const stats = { voted: 0, refused: 0, pending: 0, sweep: 0 };
+
+    for (const room of rooms) {
+      // 从 room 字段解析楼层 (前两位)
+      const roomStr = String(room.room || '');
+      const floor = parseInt(roomStr.substring(0, 2), 10) || 0;
+      const roomInFloor = roomStr.substring(2) || roomStr;
+
+      maxFloor = Math.max(maxFloor, floor);
+
+      if (!floors[floor]) {
+        floors[floor] = [];
+      }
+
+      floors[floor].push({
+        owner_id: room.owner_id,
+        room_number: room.room_number,
+        floor,
+        room_in_floor: roomInFloor,
+        owner_name: room.owner_name,
+        phone1: room.phone1,
+        area: room.area,
+        parking_no: room.parking_no,
+        vote_status: room.vote_status,
+        vote_date: room.vote_date,
+        remark: room.remark,
+        sweep_status: room.sweep_status
+      });
+
+      maxRoomsPerFloor = Math.max(maxRoomsPerFloor, floors[floor].length);
+
+      // 统计
+      if (['voted', 'onsite', 'video'].includes(room.vote_status)) {
+        stats.voted++;
+      } else if (room.vote_status === 'refused') {
+        stats.refused++;
+      } else if (room.vote_status === 'sweep') {
+        stats.sweep++;
+      } else {
+        stats.pending++;
+      }
+    }
+
+    res.json({
+      meta: {
+        phase_name: rooms[0]?.phase_name || '',
+        building,
+        unit,
+        round_name: rooms[0]?.round_name || '',
+        total_rooms: rooms.length,
+        voted_count: stats.voted,
+        refused_count: stats.refused,
+        pending_count: stats.pending,
+        sweep_count: stats.sweep
+      },
+      floors,
+      stats: {
+        max_floor: maxFloor,
+        max_rooms_per_floor: maxRoomsPerFloor
+      }
+    });
+  } catch (error) {
+    console.error('获取单元房间数据错误:', error);
+    res.status(500).json({ error: '服务器错误' });
+  }
+});
+
 // ===== 统计数据 =====
 
 // 获取投票统计
@@ -560,7 +759,11 @@ router.get('/stats', authMiddleware, async (req, res) => {
     let whereConditions = ['1=1'];
     let params = [];
 
-    if (community_id) {
+    // 非超级管理员只能看自己小区的统计
+    if (!isSuperAdmin(req.user)) {
+      whereConditions.push('p.community_id = ?');
+      params.push(req.user.communityId);
+    } else if (community_id) {
       whereConditions.push('p.community_id = ?');
       params.push(community_id);
     }
@@ -688,7 +891,13 @@ router.get('/progress', authMiddleware, async (req, res) => {
     let roundFilter = '';
     let communityFilter = '';
     let params = [];
-    if (community_id) {
+
+    // 非超级管理员只能看自己小区的进度
+    if (!isSuperAdmin(req.user)) {
+      roundFilter = 'WHERE r.community_id = ?';
+      communityFilter = 'AND p.community_id = ?';
+      params.push(req.user.communityId, req.user.communityId);
+    } else if (community_id) {
       roundFilter = 'WHERE r.community_id = ?';
       communityFilter = 'AND p.community_id = ?';
       params.push(community_id, community_id);
