@@ -595,6 +595,164 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
   }
 });
 
+// ===== 导出功能 =====
+
+// 导出投票记录为 Excel
+router.get('/export', authMiddleware, async (req, res) => {
+  try {
+    const { round_id, community_id, phase_id, vote_status, search } = req.query;
+
+    if (!round_id) {
+      return res.status(400).json({ error: '请指定投票轮次' });
+    }
+
+    let whereConditions = ['1=1'];
+    let params = [round_id];
+
+    // 非超级管理员只能导出自己小区的数据
+    if (!isSuperAdmin(req.user)) {
+      whereConditions.push('p.community_id = ?');
+      params.push(req.user.communityId);
+    } else if (community_id) {
+      whereConditions.push('p.community_id = ?');
+      params.push(community_id);
+    }
+
+    if (phase_id) {
+      whereConditions.push('o.phase_id = ?');
+      params.push(phase_id);
+    }
+
+    if (vote_status) {
+      if (vote_status === 'pending') {
+        whereConditions.push('(v.vote_status IS NULL OR v.vote_status = "pending")');
+      } else {
+        whereConditions.push('v.vote_status = ?');
+        params.push(vote_status);
+      }
+    }
+
+    if (search) {
+      whereConditions.push('(o.owner_name LIKE ? OR o.room_number LIKE ? OR o.phone1 LIKE ?)');
+      const searchPattern = `%${search}%`;
+      params.push(searchPattern, searchPattern, searchPattern);
+    }
+
+    const whereClause = whereConditions.join(' AND ');
+
+    // 获取投票数据
+    const [records] = await pool.query(`
+      SELECT
+        o.seq_no,
+        o.room_number,
+        o.building,
+        o.unit,
+        o.room,
+        o.owner_name,
+        o.area,
+        o.parking_no,
+        o.parking_area,
+        o.phone1,
+        o.phone2,
+        o.phone3,
+        o.wechat_status,
+        o.wechat_contact,
+        p.name as phase_name,
+        c.name as community_name,
+        r.name as round_name,
+        COALESCE(v.vote_status, 'pending') as vote_status,
+        v.vote_phone,
+        v.vote_date,
+        v.remark,
+        v.sweep_status
+      FROM owners o
+      JOIN phases p ON o.phase_id = p.id
+      JOIN communities c ON p.community_id = c.id
+      LEFT JOIN votes v ON o.id = v.owner_id AND v.round_id = ?
+      LEFT JOIN vote_rounds r ON r.id = ?
+      WHERE ${whereClause}
+      ORDER BY p.name, o.building, o.unit, o.room
+    `, [round_id, round_id, ...params]);
+
+    // 投票状态映射
+    const voteStatusMap = {
+      'pending': '待投票',
+      'voted': '已投票',
+      'onsite': '现场投票',
+      'video': '视频投票',
+      'refused': '拒绝',
+      'sweep': '扫楼中'
+    };
+
+    // 转换为 Excel 格式
+    const excelData = records.map((record, index) => ({
+      '序号': record.seq_no || index + 1,
+      '小区': record.community_name,
+      '期数': record.phase_name,
+      '房间号': record.room_number,
+      '楼栋': record.building,
+      '单元': record.unit,
+      '房号': record.room,
+      '业主姓名': record.owner_name,
+      '面积': record.area,
+      '车位号': record.parking_no,
+      '车位面积': record.parking_area,
+      '联系电话1': record.phone1,
+      '联系电话2': record.phone2,
+      '联系电话3': record.phone3,
+      '投票状态': voteStatusMap[record.vote_status] || record.vote_status,
+      '投票电话': record.vote_phone || '',
+      '投票日期': record.vote_date ? new Date(record.vote_date).toLocaleDateString('zh-CN') : '',
+      '扫楼状态': record.sweep_status || '',
+      '备注': record.remark || '',
+    }));
+
+    // 创建工作簿
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(excelData);
+
+    // 设置列宽
+    ws['!cols'] = [
+      { wch: 6 },   // 序号
+      { wch: 15 },  // 小区
+      { wch: 10 },  // 期数
+      { wch: 15 },  // 房间号
+      { wch: 8 },   // 楼栋
+      { wch: 8 },   // 单元
+      { wch: 8 },   // 房号
+      { wch: 12 },  // 业主姓名
+      { wch: 10 },  // 面积
+      { wch: 12 },  // 车位号
+      { wch: 10 },  // 车位面积
+      { wch: 15 },  // 联系电话1
+      { wch: 15 },  // 联系电话2
+      { wch: 15 },  // 联系电话3
+      { wch: 10 },  // 投票状态
+      { wch: 15 },  // 投票电话
+      { wch: 12 },  // 投票日期
+      { wch: 15 },  // 扫楼状态
+      { wch: 25 },  // 备注
+    ];
+
+    // 获取轮次名称用于文件名
+    const roundName = records[0]?.round_name || '投票';
+    XLSX.utils.book_append_sheet(wb, ws, '投票记录');
+
+    // 生成 buffer
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    // 设置响应头
+    const filename = encodeURIComponent(`${roundName}_投票记录_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${filename}`);
+
+    res.send(buffer);
+  } catch (error) {
+    console.error('导出投票记录错误:', error);
+    res.status(500).json({ error: '服务器错误' });
+  }
+});
+
 // ===== 楼栋可视化 =====
 
 // 获取某单元的详细房间投票数据（用于楼层图可视化）
@@ -728,6 +886,431 @@ router.get('/unit-rooms', authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error('获取单元房间数据错误:', error);
+    res.status(500).json({ error: '服务器错误' });
+  }
+});
+
+// 获取楼栋投票概览（按期数、楼栋、单元汇总统计）
+router.get('/building-overview', authMiddleware, async (req, res) => {
+  try {
+    const { round_id, community_id } = req.query;
+
+    if (!community_id) {
+      return res.status(400).json({ error: '缺少必要参数: community_id' });
+    }
+
+    // 确定使用的投票轮次（如果未指定，使用最近的活跃轮次或最新轮次）
+    let effectiveRoundId = round_id;
+    if (!effectiveRoundId) {
+      const [latestRound] = await pool.query(`
+        SELECT id FROM vote_rounds
+        WHERE community_id = ?
+        ORDER BY status = 'active' DESC, created_at DESC
+        LIMIT 1
+      `, [community_id]);
+
+      if (latestRound.length === 0) {
+        return res.json({ round: null, phases: [] });
+      }
+      effectiveRoundId = latestRound[0].id;
+    }
+
+    // 获取轮次信息
+    const [roundInfo] = await pool.query(`
+      SELECT id, name, status, year, round_code FROM vote_rounds WHERE id = ?
+    `, [effectiveRoundId]);
+
+    if (roundInfo.length === 0) {
+      return res.json({ round: null, phases: [] });
+    }
+
+    // 获取该小区所有期数的楼栋单元统计
+    const [stats] = await pool.query(`
+      SELECT
+        p.id as phase_id,
+        p.name as phase_name,
+        o.building,
+        o.unit,
+        COUNT(*) as total_rooms,
+        COUNT(CASE WHEN v.vote_status IN ('voted', 'onsite', 'video') THEN 1 END) as voted_count,
+        COUNT(CASE WHEN v.vote_status = 'refused' THEN 1 END) as refused_count,
+        COUNT(CASE WHEN v.vote_status = 'sweep' THEN 1 END) as sweep_count,
+        COUNT(CASE WHEN COALESCE(v.vote_status, 'pending') = 'pending' THEN 1 END) as pending_count
+      FROM owners o
+      JOIN phases p ON o.phase_id = p.id
+      LEFT JOIN votes v ON o.id = v.owner_id AND v.round_id = ?
+      WHERE p.community_id = ?
+      GROUP BY p.id, p.name, o.building, o.unit
+      ORDER BY p.name, CAST(o.building AS UNSIGNED), CAST(o.unit AS UNSIGNED)
+    `, [effectiveRoundId, community_id]);
+
+    // 按期数分组组织数据
+    const phasesMap = new Map();
+
+    for (const row of stats) {
+      if (!phasesMap.has(row.phase_id)) {
+        phasesMap.set(row.phase_id, {
+          phase_id: row.phase_id,
+          phase_name: row.phase_name,
+          buildings: new Map(),
+          total_rooms: 0,
+          voted_count: 0,
+          refused_count: 0,
+          sweep_count: 0,
+          pending_count: 0
+        });
+      }
+
+      const phase = phasesMap.get(row.phase_id);
+      phase.total_rooms += row.total_rooms;
+      phase.voted_count += row.voted_count;
+      phase.refused_count += row.refused_count;
+      phase.sweep_count += row.sweep_count;
+      phase.pending_count += row.pending_count;
+
+      if (!phase.buildings.has(row.building)) {
+        phase.buildings.set(row.building, {
+          building: row.building,
+          units: [],
+          total_rooms: 0,
+          voted_count: 0,
+          refused_count: 0,
+          sweep_count: 0,
+          pending_count: 0
+        });
+      }
+
+      const building = phase.buildings.get(row.building);
+      building.total_rooms += row.total_rooms;
+      building.voted_count += row.voted_count;
+      building.refused_count += row.refused_count;
+      building.sweep_count += row.sweep_count;
+      building.pending_count += row.pending_count;
+
+      building.units.push({
+        unit: row.unit,
+        total_rooms: row.total_rooms,
+        voted_count: row.voted_count,
+        refused_count: row.refused_count,
+        sweep_count: row.sweep_count,
+        pending_count: row.pending_count
+      });
+    }
+
+    // 转换为数组格式
+    const phases = Array.from(phasesMap.values()).map(phase => ({
+      ...phase,
+      buildings: Array.from(phase.buildings.values())
+    }));
+
+    res.json({
+      round: roundInfo[0],
+      phases
+    });
+  } catch (error) {
+    console.error('获取楼栋概览数据错误:', error);
+    res.status(500).json({ error: '服务器错误' });
+  }
+});
+
+// ===== 扫楼状态管理 =====
+
+// 获取扫楼状态概览（按期数、楼栋、单元汇总统计）
+router.get('/sweep-overview', authMiddleware, async (req, res) => {
+  try {
+    const { community_id } = req.query;
+
+    if (!community_id) {
+      return res.status(400).json({ error: '缺少必要参数: community_id' });
+    }
+
+    // 检查访问权限
+    if (!canAccessCommunity(req.user, parseInt(community_id))) {
+      return res.status(403).json({ error: '无权访问该小区' });
+    }
+
+    // 获取该小区所有期数的楼栋单元扫楼统计
+    const [stats] = await pool.query(`
+      SELECT
+        p.id as phase_id,
+        p.name as phase_name,
+        o.building,
+        o.unit,
+        COUNT(*) as total_rooms,
+        COUNT(CASE WHEN o.sweep_status = 'completed' THEN 1 END) as completed_count,
+        COUNT(CASE WHEN o.sweep_status = 'in_progress' THEN 1 END) as in_progress_count,
+        COUNT(CASE WHEN o.sweep_status IS NULL OR o.sweep_status = '' OR o.sweep_status = 'pending' THEN 1 END) as pending_count
+      FROM owners o
+      JOIN phases p ON o.phase_id = p.id
+      WHERE p.community_id = ?
+      GROUP BY p.id, p.name, o.building, o.unit
+      ORDER BY p.name, CAST(o.building AS UNSIGNED), CAST(o.unit AS UNSIGNED)
+    `, [community_id]);
+
+    // 按期数分组组织数据
+    const phasesMap = new Map();
+
+    for (const row of stats) {
+      if (!phasesMap.has(row.phase_id)) {
+        phasesMap.set(row.phase_id, {
+          phase_id: row.phase_id,
+          phase_name: row.phase_name,
+          buildings: new Map(),
+          total_rooms: 0,
+          completed_count: 0,
+          in_progress_count: 0,
+          pending_count: 0
+        });
+      }
+
+      const phase = phasesMap.get(row.phase_id);
+      phase.total_rooms += row.total_rooms;
+      phase.completed_count += row.completed_count;
+      phase.in_progress_count += row.in_progress_count;
+      phase.pending_count += row.pending_count;
+
+      if (!phase.buildings.has(row.building)) {
+        phase.buildings.set(row.building, {
+          building: row.building,
+          units: [],
+          total_rooms: 0,
+          completed_count: 0,
+          in_progress_count: 0,
+          pending_count: 0
+        });
+      }
+
+      const building = phase.buildings.get(row.building);
+      building.total_rooms += row.total_rooms;
+      building.completed_count += row.completed_count;
+      building.in_progress_count += row.in_progress_count;
+      building.pending_count += row.pending_count;
+
+      building.units.push({
+        unit: row.unit,
+        total_rooms: row.total_rooms,
+        completed_count: row.completed_count,
+        in_progress_count: row.in_progress_count,
+        pending_count: row.pending_count
+      });
+    }
+
+    // 转换为数组格式
+    const phases = Array.from(phasesMap.values()).map(phase => ({
+      ...phase,
+      buildings: Array.from(phase.buildings.values())
+    }));
+
+    res.json({ phases });
+  } catch (error) {
+    console.error('获取扫楼概览数据错误:', error);
+    res.status(500).json({ error: '服务器错误' });
+  }
+});
+
+// 获取某单元的详细扫楼状态数据
+router.get('/sweep-unit-rooms', authMiddleware, async (req, res) => {
+  try {
+    const { phase_id, building, unit } = req.query;
+
+    if (!phase_id || !building || !unit) {
+      return res.status(400).json({ error: '缺少必要参数: phase_id, building, unit' });
+    }
+
+    // 查询该单元所有业主及其扫楼状态
+    const [rooms] = await pool.query(`
+      SELECT
+        o.id as owner_id,
+        o.room_number,
+        o.room,
+        o.owner_name,
+        o.phone1,
+        o.area,
+        o.parking_no,
+        COALESCE(o.sweep_status, 'pending') as sweep_status,
+        o.sweep_remark,
+        o.sweep_date,
+        p.name as phase_name
+      FROM owners o
+      JOIN phases p ON o.phase_id = p.id
+      WHERE o.phase_id = ? AND o.building = ? AND o.unit = ?
+      ORDER BY o.room ASC
+    `, [phase_id, building, unit]);
+
+    if (rooms.length === 0) {
+      return res.json({
+        meta: {
+          phase_name: '',
+          building,
+          unit,
+          total_rooms: 0,
+          completed_count: 0,
+          in_progress_count: 0,
+          pending_count: 0
+        },
+        floors: {},
+        stats: { max_floor: 0, max_rooms_per_floor: 0 }
+      });
+    }
+
+    // 解析楼层信息并分组
+    const floors = {};
+    let maxFloor = 0;
+    let maxRoomsPerFloor = 0;
+
+    const stats = { completed: 0, in_progress: 0, pending: 0 };
+
+    for (const room of rooms) {
+      const roomStr = String(room.room || '');
+      let floor = 0;
+      let roomInFloor = roomStr;
+
+      if (roomStr.length > 2) {
+        const floorPart = roomStr.slice(0, -2);
+        if (!isNaN(floorPart)) {
+          floor = parseInt(floorPart, 10);
+          roomInFloor = roomStr.slice(-2);
+        }
+      } else {
+        floor = parseInt(roomStr, 10) || 0;
+      }
+
+      maxFloor = Math.max(maxFloor, floor);
+
+      if (!floors[floor]) {
+        floors[floor] = [];
+      }
+
+      floors[floor].push({
+        owner_id: room.owner_id,
+        room_number: room.room_number,
+        floor,
+        room_in_floor: roomInFloor,
+        owner_name: room.owner_name,
+        phone1: room.phone1,
+        area: room.area,
+        parking_no: room.parking_no,
+        sweep_status: room.sweep_status,
+        sweep_remark: room.sweep_remark,
+        sweep_date: room.sweep_date
+      });
+
+      maxRoomsPerFloor = Math.max(maxRoomsPerFloor, floors[floor].length);
+
+      // 统计
+      if (room.sweep_status === 'completed') {
+        stats.completed++;
+      } else if (room.sweep_status === 'in_progress') {
+        stats.in_progress++;
+      } else {
+        stats.pending++;
+      }
+    }
+
+    res.json({
+      meta: {
+        phase_name: rooms[0]?.phase_name || '',
+        building,
+        unit,
+        total_rooms: rooms.length,
+        completed_count: stats.completed,
+        in_progress_count: stats.in_progress,
+        pending_count: stats.pending
+      },
+      floors,
+      stats: {
+        max_floor: maxFloor,
+        max_rooms_per_floor: maxRoomsPerFloor
+      }
+    });
+  } catch (error) {
+    console.error('获取单元扫楼数据错误:', error);
+    res.status(500).json({ error: '服务器错误' });
+  }
+});
+
+// 更新扫楼状态（管理员可操作）
+router.put('/sweep/:ownerId', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { ownerId } = req.params;
+    const { sweep_status, sweep_remark } = req.body;
+
+    // 获取业主所属小区
+    const [owners] = await pool.query(`
+      SELECT o.room_number, p.community_id
+      FROM owners o
+      JOIN phases p ON o.phase_id = p.id
+      WHERE o.id = ?
+    `, [ownerId]);
+
+    if (owners.length === 0) {
+      return res.status(404).json({ error: '业主不存在' });
+    }
+
+    const owner = owners[0];
+
+    // 检查管理权限
+    if (!canManageCommunity(req.user, owner.community_id)) {
+      return res.status(403).json({ error: '无权管理该小区' });
+    }
+
+    await pool.query(`
+      UPDATE owners
+      SET sweep_status = ?, sweep_remark = ?, sweep_date = NOW()
+      WHERE id = ?
+    `, [sweep_status, sweep_remark, ownerId]);
+
+    // 记录日志
+    const log = createLogger(req);
+    await log(Actions.UPDATE, Modules.OWNER, {
+      targetType: 'owner',
+      targetId: parseInt(ownerId),
+      targetName: owner.room_number,
+      details: `更新扫楼状态: ${owner.room_number} -> ${sweep_status}`,
+    });
+
+    res.json({ message: '更新成功', sweep_status, sweep_remark });
+  } catch (error) {
+    console.error('更新扫楼状态错误:', error);
+    res.status(500).json({ error: '服务器错误' });
+  }
+});
+
+// 批量更新扫楼状态（管理员可操作）
+router.put('/sweep-batch', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { owner_ids, sweep_status, community_id } = req.body;
+
+    if (!owner_ids || !Array.isArray(owner_ids) || owner_ids.length === 0) {
+      return res.status(400).json({ error: '请选择业主' });
+    }
+
+    if (!sweep_status) {
+      return res.status(400).json({ error: '请选择扫楼状态' });
+    }
+
+    // 检查管理权限
+    if (!canManageCommunity(req.user, community_id)) {
+      return res.status(403).json({ error: '无权管理该小区' });
+    }
+
+    // 批量更新
+    await pool.query(`
+      UPDATE owners
+      SET sweep_status = ?, sweep_date = NOW()
+      WHERE id IN (?)
+    `, [sweep_status, owner_ids]);
+
+    // 记录日志
+    const log = createLogger(req);
+    await log(Actions.BATCH_UPDATE, Modules.OWNER, {
+      targetType: 'owner',
+      details: `批量更新扫楼状态: ${owner_ids.length} 条记录 -> ${sweep_status}`,
+    });
+
+    res.json({ message: `成功更新 ${owner_ids.length} 条记录` });
+  } catch (error) {
+    console.error('批量更新扫楼状态错误:', error);
     res.status(500).json({ error: '服务器错误' });
   }
 });

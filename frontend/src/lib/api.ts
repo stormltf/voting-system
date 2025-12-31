@@ -83,6 +83,25 @@ export const ownerApi = {
   },
   getBuildings: (phaseId: number) => api.get(`/owners/buildings/${phaseId}`),
   getUnits: (phaseId: number, building: string) => api.get(`/owners/units/${phaseId}/${building}`),
+  // 导出
+  getExportUrl: (params?: {
+    phase_id?: number;
+    community_id?: number;
+    building?: string;
+    search?: string;
+    round_id?: number;
+    vote_status?: string;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          searchParams.append(key, String(value));
+        }
+      });
+    }
+    return `${API_BASE_URL}/owners/export?${searchParams.toString()}`;
+  },
 };
 
 // 投票 API
@@ -116,6 +135,33 @@ export const voteApi = {
   // 楼栋可视化
   getUnitRooms: (params: { round_id: number; phase_id: number; building: string; unit: string }) =>
     api.get('/votes/unit-rooms', { params }),
+  getBuildingOverview: (params: { community_id: number; round_id?: number }) =>
+    api.get('/votes/building-overview', { params }),
+  // 导出
+  getExportUrl: (params: {
+    round_id: number;
+    community_id?: number;
+    phase_id?: number;
+    vote_status?: string;
+    search?: string;
+  }) => {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        searchParams.append(key, String(value));
+      }
+    });
+    return `${API_BASE_URL}/votes/export?${searchParams.toString()}`;
+  },
+  // 扫楼状态管理
+  getSweepOverview: (params: { community_id: number }) =>
+    api.get('/votes/sweep-overview', { params }),
+  getSweepUnitRooms: (params: { phase_id: number; building: string; unit: string }) =>
+    api.get('/votes/sweep-unit-rooms', { params }),
+  updateSweepStatus: (ownerId: number, data: { sweep_status: string; sweep_remark?: string }) =>
+    api.put(`/votes/sweep/${ownerId}`, data),
+  batchUpdateSweep: (data: { owner_ids: number[]; sweep_status: string; community_id: number }) =>
+    api.put('/votes/sweep-batch', data),
 };
 
 // 操作日志 API

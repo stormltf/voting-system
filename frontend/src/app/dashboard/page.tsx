@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Users, Home, Vote, TrendingUp, Building, Loader2, BarChart3 } from 'lucide-react';
 import StatsCard from '@/components/StatsCard';
 import BuildingVoteVisualization from '@/components/BuildingVoteVisualization';
+import SweepStatusVisualization from '@/components/SweepStatusVisualization';
 import { voteApi } from '@/lib/api';
 import { formatNumber, formatArea, formatPercent } from '@/lib/utils';
 
@@ -259,6 +260,9 @@ export default function DashboardPage() {
 
       {/* 楼栋投票状态可视化 */}
       <BuildingVoteVisualization communityId={communityId} />
+
+      {/* 扫楼进度管理 */}
+      <SweepStatusVisualization communityId={communityId} />
 
       {/* 各轮投票进度 */}
       <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden">

@@ -1,29 +1,24 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Building2, Loader2, ChevronDown, ChevronRight, X } from 'lucide-react';
-import FloorGrid from './FloorGrid';
-import RoomEditModal from './RoomEditModal';
+import { Footprints, Loader2, ChevronDown, ChevronRight, X } from 'lucide-react';
+import SweepFloorGrid from './SweepFloorGrid';
+import SweepEditModal from './SweepEditModal';
 import { voteApi } from '@/lib/api';
 import {
-  UnitRoomsResponse,
-  RoomData,
-  Round,
-  BuildingOverviewResponse,
-  PhaseStats,
-  BuildingStats,
-  UnitStats,
+  SweepUnitRoomsResponse,
+  SweepRoomData,
+  SweepOverviewResponse,
+  SweepPhaseStats,
 } from './types';
 
 interface Props {
   communityId: number | null;
 }
 
-export default function BuildingVoteVisualization({ communityId }: Props) {
+export default function SweepStatusVisualization({ communityId }: Props) {
   // 数据状态
-  const [overviewData, setOverviewData] = useState<BuildingOverviewResponse | null>(null);
-  const [rounds, setRounds] = useState<Round[]>([]);
-  const [selectedRoundId, setSelectedRoundId] = useState<number | null>(null);
+  const [overviewData, setOverviewData] = useState<SweepOverviewResponse | null>(null);
 
   // 详情弹窗状态
   const [selectedUnit, setSelectedUnit] = useState<{
@@ -32,74 +27,45 @@ export default function BuildingVoteVisualization({ communityId }: Props) {
     building: string;
     unit: string;
   } | null>(null);
-  const [roomData, setRoomData] = useState<UnitRoomsResponse | null>(null);
+  const [roomData, setRoomData] = useState<SweepUnitRoomsResponse | null>(null);
   const [loadingRooms, setLoadingRooms] = useState(false);
-  const [editingRoom, setEditingRoom] = useState<RoomData | null>(null);
+  const [editingRoom, setEditingRoom] = useState<SweepRoomData | null>(null);
 
   // UI 状态
   const [loading, setLoading] = useState(false);
   const [expandedPhases, setExpandedPhases] = useState<Set<number>>(new Set());
 
-  // 加载投票轮次列表
-  useEffect(() => {
+  // 加载扫楼概览数据
+  const loadOverview = useCallback(async () => {
     if (!communityId) return;
 
-    const loadRounds = async () => {
-      try {
-        const res = await voteApi.getRounds({ community_id: communityId });
-        setRounds(res.data);
-      } catch (error) {
-        console.error('加载投票轮次失败:', error);
-      }
-    };
+    try {
+      setLoading(true);
+      const res = await voteApi.getSweepOverview({ community_id: communityId });
+      setOverviewData(res.data);
 
-    loadRounds();
+      // 默认展开所有期数
+      if (res.data.phases) {
+        setExpandedPhases(new Set(res.data.phases.map((p: SweepPhaseStats) => p.phase_id)));
+      }
+    } catch (error) {
+      console.error('加载扫楼概览失败:', error);
+    } finally {
+      setLoading(false);
+    }
   }, [communityId]);
 
-  // 加载楼栋概览数据
   useEffect(() => {
-    if (!communityId) return;
-
-    const loadOverview = async () => {
-      try {
-        setLoading(true);
-        const params: { community_id: number; round_id?: number } = {
-          community_id: communityId,
-        };
-        if (selectedRoundId) {
-          params.round_id = selectedRoundId;
-        }
-
-        const res = await voteApi.getBuildingOverview(params);
-        setOverviewData(res.data);
-
-        // 默认展开所有期数
-        if (res.data.phases) {
-          setExpandedPhases(new Set(res.data.phases.map((p: PhaseStats) => p.phase_id)));
-        }
-
-        // 如果没有选择轮次，从返回数据中获取默认轮次
-        if (!selectedRoundId && res.data.round) {
-          setSelectedRoundId(res.data.round.id);
-        }
-      } catch (error) {
-        console.error('加载楼栋概览失败:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadOverview();
-  }, [communityId, selectedRoundId]);
+  }, [loadOverview]);
 
   // 加载单元详情
   const loadUnitDetail = useCallback(async () => {
-    if (!selectedUnit || !overviewData?.round) return;
+    if (!selectedUnit) return;
 
     try {
       setLoadingRooms(true);
-      const res = await voteApi.getUnitRooms({
-        round_id: overviewData.round.id,
+      const res = await voteApi.getSweepUnitRooms({
         phase_id: selectedUnit.phaseId,
         building: selectedUnit.building,
         unit: selectedUnit.unit,
@@ -111,7 +77,7 @@ export default function BuildingVoteVisualization({ communityId }: Props) {
     } finally {
       setLoadingRooms(false);
     }
-  }, [selectedUnit, overviewData?.round]);
+  }, [selectedUnit]);
 
   useEffect(() => {
     loadUnitDetail();
@@ -141,10 +107,10 @@ export default function BuildingVoteVisualization({ communityId }: Props) {
     setRoomData(null);
   };
 
-  // 计算投票率
-  const getVotePercent = (voted: number, total: number) => {
+  // 计算完成率
+  const getCompletedPercent = (completed: number, total: number) => {
     if (total === 0) return 0;
-    return Math.round((voted / total) * 100);
+    return Math.round((completed / total) * 100);
   };
 
   // 获取进度条颜色
@@ -165,41 +131,19 @@ export default function BuildingVoteVisualization({ communityId }: Props) {
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden">
-      {/* 标题和轮次选择 */}
+      {/* 标题 */}
       <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Building2 className="w-5 h-5 text-slate-400" />
-            <h2 className="text-lg font-semibold text-slate-900">楼栋投票状态</h2>
-            {overviewData?.round && (
-              <span className="text-sm text-slate-500 ml-2">
-                （{overviewData.round.name}
-                {overviewData.round.status === 'active' && (
-                  <span className="text-emerald-600 ml-1">进行中</span>
-                )}
-                ）
-              </span>
-            )}
+            <Footprints className="w-5 h-5 text-slate-400" />
+            <h2 className="text-lg font-semibold text-slate-900">扫楼进度管理</h2>
           </div>
-
-          {/* 轮次选择 */}
-          {rounds.length > 0 && (
-            <div className="relative">
-              <select
-                value={selectedRoundId ?? ''}
-                onChange={(e) => setSelectedRoundId(e.target.value ? Number(e.target.value) : null)}
-                className="appearance-none px-3 py-1.5 pr-8 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none cursor-pointer"
-              >
-                {rounds.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                    {r.status === 'active' ? ' (进行中)' : ''}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-            </div>
-          )}
+          <button
+            onClick={loadOverview}
+            className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+          >
+            刷新
+          </button>
         </div>
       </div>
 
@@ -235,16 +179,16 @@ export default function BuildingVoteVisualization({ communityId }: Props) {
                   <div className="flex items-center gap-2">
                     <div className="w-24 h-2 bg-slate-200 rounded-full overflow-hidden">
                       <div
-                        className={`h-full ${getProgressColor(getVotePercent(phase.voted_count, phase.total_rooms))} transition-all`}
-                        style={{ width: `${getVotePercent(phase.voted_count, phase.total_rooms)}%` }}
+                        className={`h-full ${getProgressColor(getCompletedPercent(phase.completed_count, phase.total_rooms))} transition-all`}
+                        style={{ width: `${getCompletedPercent(phase.completed_count, phase.total_rooms)}%` }}
                       />
                     </div>
                     <span className="text-sm font-medium text-slate-600">
-                      {getVotePercent(phase.voted_count, phase.total_rooms)}%
+                      {getCompletedPercent(phase.completed_count, phase.total_rooms)}%
                     </span>
                   </div>
                   <div className="text-sm text-slate-500">
-                    <span className="text-emerald-600 font-medium">{phase.voted_count}</span>
+                    <span className="text-emerald-600 font-medium">{phase.completed_count}</span>
                     <span className="mx-1">/</span>
                     <span>{phase.total_rooms}</span>
                   </div>
@@ -260,17 +204,16 @@ export default function BuildingVoteVisualization({ communityId }: Props) {
                       <div className="flex items-center justify-between mb-2">
                         <span className="font-medium text-slate-700">{building.building}号楼</span>
                         <div className="flex items-center gap-3 text-sm">
-                          <span className="text-emerald-600">{building.voted_count} 已投</span>
-                          <span className="text-red-500">{building.refused_count} 拒绝</span>
-                          <span className="text-amber-500">{building.sweep_count} 扫楼</span>
-                          <span className="text-slate-400">{building.pending_count} 待投</span>
+                          <span className="text-emerald-600">{building.completed_count} 已完成</span>
+                          <span className="text-amber-500">{building.in_progress_count} 进行中</span>
+                          <span className="text-slate-400">{building.pending_count} 待扫楼</span>
                         </div>
                       </div>
 
                       {/* 单元格子 */}
                       <div className="flex flex-wrap gap-2">
                         {building.units.map((unit) => {
-                          const percent = getVotePercent(unit.voted_count, unit.total_rooms);
+                          const percent = getCompletedPercent(unit.completed_count, unit.total_rooms);
                           return (
                             <button
                               key={unit.unit}
@@ -287,12 +230,12 @@ export default function BuildingVoteVisualization({ communityId }: Props) {
                                 />
                               </div>
                               <span className="text-xs text-slate-500 mt-1">
-                                {unit.voted_count}/{unit.total_rooms}
+                                {unit.completed_count}/{unit.total_rooms}
                               </span>
 
                               {/* Hover 提示 */}
                               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-slate-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
-                                已投 {unit.voted_count} · 拒绝 {unit.refused_count} · 扫楼 {unit.sweep_count} · 待投{' '}
+                                已完成 {unit.completed_count} · 进行中 {unit.in_progress_count} · 待扫楼{' '}
                                 {unit.pending_count}
                               </div>
                             </button>
@@ -318,9 +261,7 @@ export default function BuildingVoteVisualization({ communityId }: Props) {
                 <h3 className="text-lg font-semibold text-slate-900">
                   {selectedUnit.phaseName} · {selectedUnit.building}号楼 · {selectedUnit.unit}单元
                 </h3>
-                {overviewData?.round && (
-                  <p className="text-sm text-slate-500 mt-0.5">{overviewData.round.name}</p>
-                )}
+                <p className="text-sm text-slate-500 mt-0.5">扫楼进度</p>
               </div>
               <button
                 onClick={closeDetail}
@@ -338,7 +279,7 @@ export default function BuildingVoteVisualization({ communityId }: Props) {
                   <span>加载中...</span>
                 </div>
               ) : roomData && roomData.meta.total_rooms > 0 ? (
-                <FloorGrid data={roomData} onRoomClick={setEditingRoom} />
+                <SweepFloorGrid data={roomData} onRoomClick={setEditingRoom} />
               ) : (
                 <div className="p-12 text-center text-slate-400">该单元没有房间数据</div>
               )}
@@ -348,13 +289,13 @@ export default function BuildingVoteVisualization({ communityId }: Props) {
       )}
 
       {/* 房间编辑弹窗 */}
-      {editingRoom && overviewData?.round && (
-        <RoomEditModal
+      {editingRoom && (
+        <SweepEditModal
           room={editingRoom}
-          roundId={overviewData.round.id}
           onClose={() => setEditingRoom(null)}
           onSaved={() => {
             loadUnitDetail();
+            loadOverview();
           }}
         />
       )}

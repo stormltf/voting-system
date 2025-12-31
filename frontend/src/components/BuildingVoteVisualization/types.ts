@@ -57,3 +57,45 @@ export const voteStatusConfig: Record<string, { label: string; color: string; bg
   pending: { label: '待投票', color: 'text-slate-600', bgColor: 'bg-slate-300' },
   sweep: { label: '扫楼中', color: 'text-white', bgColor: 'bg-amber-500' },
 };
+
+// 楼栋概览相关类型
+export interface UnitStats {
+  unit: string;
+  total_rooms: number;
+  voted_count: number;
+  refused_count: number;
+  sweep_count: number;
+  pending_count: number;
+}
+
+export interface BuildingStats {
+  building: string;
+  units: UnitStats[];
+  total_rooms: number;
+  voted_count: number;
+  refused_count: number;
+  sweep_count: number;
+  pending_count: number;
+}
+
+export interface PhaseStats {
+  phase_id: number;
+  phase_name: string;
+  buildings: BuildingStats[];
+  total_rooms: number;
+  voted_count: number;
+  refused_count: number;
+  sweep_count: number;
+  pending_count: number;
+}
+
+export interface BuildingOverviewResponse {
+  round: {
+    id: number;
+    name: string;
+    status: string;
+    year: number;
+    round_code: string;
+  } | null;
+  phases: PhaseStats[];
+}

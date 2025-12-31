@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Edit, Trash2, X, Search, Vote, Calendar, Loader2, CheckCircle2, Users, Upload, RefreshCw } from 'lucide-react';
+import { Plus, Edit, Trash2, X, Search, Vote, Calendar, Loader2, CheckCircle2, Users, Upload, RefreshCw, Download } from 'lucide-react';
 import DataTable from '@/components/DataTable';
 import { voteApi, communityApi } from '@/lib/api';
 import { cn, roundStatusMap, voteStatusMap, wechatStatusMap, formatDate } from '@/lib/utils';
@@ -95,6 +95,9 @@ export default function VotesPage() {
   const [voteColumn, setVoteColumn] = useState('');
   const [importing, setImporting] = useState(false);
   const [initializingVotes, setInitializingVotes] = useState(false);
+
+  // 导出状态
+  const [exporting, setExporting] = useState(false);
 
 
   useEffect(() => {
@@ -327,6 +330,60 @@ export default function VotesPage() {
       alert(error.response?.data?.error || '初始化失败');
     } finally {
       setInitializingVotes(false);
+    }
+  };
+
+  // 导出投票记录
+  const handleExport = () => {
+    if (!selectedRound || !communityId) {
+      alert('请先选择小区和投票轮次');
+      return;
+    }
+
+    setExporting(true);
+
+    // 构建导出参数（与当前筛选条件一致）
+    const params: any = {
+      round_id: selectedRound as number,
+      community_id: communityId,
+    };
+    if (selectedPhase) params.phase_id = selectedPhase;
+    if (selectedStatus) params.vote_status = selectedStatus;
+    if (search) params.search = search;
+
+    // 获取导出 URL
+    const exportUrl = voteApi.getExportUrl(params);
+
+    // 使用 fetch 来处理需要认证的下载
+    const token = localStorage.getItem('token');
+    if (token) {
+      fetch(exportUrl, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((response) => {
+          if (!response.ok) throw new Error('导出失败');
+          return response.blob();
+        })
+        .then((blob) => {
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          // 获取当前轮次名称
+          const round = rounds.find(r => r.id === selectedRound);
+          const roundName = round?.name || '投票';
+          a.download = `${roundName}_投票记录_${new Date().toISOString().slice(0, 10)}.xlsx`;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        })
+        .catch((error) => {
+          console.error('导出失败:', error);
+          alert('导出失败，请重试');
+        })
+        .finally(() => {
+          setExporting(false);
+        });
     }
   };
 
@@ -637,7 +694,7 @@ export default function VotesPage() {
                 搜索
               </button>
 
-              {/* 初始化和导入按钮 */}
+              {/* 初始化、导出和导入按钮 */}
               {selectedRound && communityId && (
                 <>
                   <button
@@ -651,6 +708,18 @@ export default function VotesPage() {
                       <RefreshCw className="w-4 h-4" />
                     )}
                     初始化记录
+                  </button>
+                  <button
+                    onClick={handleExport}
+                    disabled={exporting}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 shadow-md shadow-blue-500/20 transition-all duration-200 font-medium disabled:opacity-50"
+                  >
+                    {exporting ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Download className="w-4 h-4" />
+                    )}
+                    导出 Excel
                   </button>
                   <button
                     onClick={() => setShowImportModal(true)}

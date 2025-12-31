@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Upload, Edit2, Check, X, Users, FileSpreadsheet, Loader2 } from 'lucide-react';
+import { Search, Upload, Edit2, Check, X, Users, FileSpreadsheet, Loader2, Download } from 'lucide-react';
 import DataTable from '@/components/DataTable';
 import { ownerApi, communityApi } from '@/lib/api';
 import { cn, wechatStatusMap } from '@/lib/utils';
@@ -60,6 +60,9 @@ export default function OwnersPage() {
   // 编辑状态
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<Partial<Owner>>({});
+
+  // 导出状态
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     const savedId = localStorage.getItem('selectedCommunityId');
@@ -130,6 +133,57 @@ export default function OwnersPage() {
   const handleSearch = useCallback(() => {
     setPagination((prev) => ({ ...prev, page: 1 }));
   }, []);
+
+  const handleExport = () => {
+    if (!communityId) {
+      alert('请先选择小区');
+      return;
+    }
+
+    setExporting(true);
+
+    // 构建导出参数（与当前筛选条件一致）
+    const params: any = { community_id: communityId };
+    if (selectedPhase) params.phase_id = selectedPhase;
+    if (search) params.search = search;
+    if (selectedWechatStatus) params.wechat_status = selectedWechatStatus;
+
+    // 获取导出 URL
+    const exportUrl = ownerApi.getExportUrl(params);
+
+    // 创建隐藏的链接并触发下载
+    const link = document.createElement('a');
+    link.href = exportUrl;
+    // 添加 token 到 header（通过 cookie 或者使用 fetch）
+    const token = localStorage.getItem('token');
+    if (token) {
+      // 使用 fetch 来处理需要认证的下载
+      fetch(exportUrl, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((response) => {
+          if (!response.ok) throw new Error('导出失败');
+          return response.blob();
+        })
+        .then((blob) => {
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `业主数据_${new Date().toISOString().slice(0, 10)}.xlsx`;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        })
+        .catch((error) => {
+          console.error('导出失败:', error);
+          alert('导出失败，请重试');
+        })
+        .finally(() => {
+          setExporting(false);
+        });
+    }
+  };
 
   const handleImport = async () => {
     if (!importFile || !importPhaseId) {
@@ -386,13 +440,27 @@ export default function OwnersPage() {
             <p className="text-slate-500 mt-0.5">管理业主基本信息</p>
           </div>
         </div>
-        <button
-          onClick={() => setShowImport(true)}
-          className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 shadow-lg shadow-emerald-500/20 transition-all duration-200 font-medium"
-        >
-          <Upload className="w-4 h-4" />
-          导入 Excel
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleExport}
+            disabled={exporting || !communityId}
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 shadow-lg shadow-blue-500/20 transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {exporting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
+            导出 Excel
+          </button>
+          <button
+            onClick={() => setShowImport(true)}
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 shadow-lg shadow-emerald-500/20 transition-all duration-200 font-medium"
+          >
+            <Upload className="w-4 h-4" />
+            导入 Excel
+          </button>
+        </div>
       </div>
 
       {/* 搜索和筛选 */}
