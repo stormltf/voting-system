@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { voteApi } from '@/lib/api';
-import { RoomData, voteStatusConfig } from './types';
+import { RoomData, voteStatusConfig, sweepStatusConfig } from './types';
 
 interface Props {
   room: RoomData;
@@ -15,7 +15,7 @@ interface Props {
 export default function RoomEditModal({ room, roundId, onClose, onSaved }: Props) {
   const [voteStatus, setVoteStatus] = useState(room.vote_status || 'pending');
   const [remark, setRemark] = useState(room.remark || '');
-  const [sweepStatus, setSweepStatus] = useState(room.sweep_status || '');
+  const [sweepStatus, setSweepStatus] = useState(room.sweep_status || 'pending');
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -108,16 +108,27 @@ export default function RoomEditModal({ room, roundId, onClose, onSaved }: Props
             />
           </div>
 
-          {/* 扫楼情况 */}
+          {/* 扫楼状态 */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">扫楼情况</label>
-            <input
-              type="text"
-              value={sweepStatus}
-              onChange={(e) => setSweepStatus(e.target.value)}
-              className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-              placeholder="扫楼情况..."
-            />
+            <label className="block text-sm font-medium text-slate-700 mb-2">扫楼状态</label>
+            <div className="grid grid-cols-3 gap-2">
+              {Object.entries(sweepStatusConfig).map(([key, value]) => (
+                <button
+                  key={key}
+                  onClick={() => setSweepStatus(key)}
+                  className={`
+                    px-3 py-2 rounded-lg text-sm font-medium transition-all
+                    ${sweepStatus === key
+                      ? 'ring-2 ring-amber-500 ring-offset-2'
+                      : 'hover:bg-slate-100'
+                    }
+                    ${value.bgColor} ${value.color}
+                  `}
+                >
+                  {value.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 

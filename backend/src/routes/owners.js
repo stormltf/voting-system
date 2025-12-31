@@ -418,31 +418,44 @@ router.put('/:id', authMiddleware, adminMiddleware, async (req, res) => {
       return res.status(403).json({ error: '无权管理该小区数据' });
     }
 
-    const {
-      seq_no, building, unit, room, room_number,
-      owner_name, area, parking_no, parking_area,
-      phone1, phone2, phone3, wechat_status, wechat_contact, house_status
-    } = req.body;
+    // 动态构建更新语句，只更新传递的字段
+    const allowedFields = [
+      'seq_no', 'building', 'unit', 'room', 'room_number',
+      'owner_name', 'area', 'parking_no', 'parking_area',
+      'phone1', 'phone2', 'phone3', 'wechat_status', 'wechat_contact', 'house_status'
+    ];
+
+    const updates = [];
+    const values = [];
+
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) {
+        updates.push(`${field} = ?`);
+        values.push(req.body[field]);
+      }
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: '没有要更新的字段' });
+    }
+
+    values.push(ownerId);
 
     await pool.query(`
-      UPDATE owners SET
-        seq_no = ?, building = ?, unit = ?, room = ?, room_number = ?,
-        owner_name = ?, area = ?, parking_no = ?, parking_area = ?,
-        phone1 = ?, phone2 = ?, phone3 = ?, wechat_status = ?,
-        wechat_contact = ?, house_status = ?
-      WHERE id = ?
-    `, [seq_no, building, unit, room, room_number,
-      owner_name, area, parking_no, parking_area,
-      phone1, phone2, phone3, wechat_status, wechat_contact, house_status,
-      ownerId]);
+      UPDATE owners SET ${updates.join(', ')} WHERE id = ?
+    `, values);
+
+    // 获取更新后的业主信息用于日志
+    const [updatedOwner] = await pool.query('SELECT room_number, owner_name FROM owners WHERE id = ?', [ownerId]);
+    const ownerInfo = updatedOwner[0] || {};
 
     // 记录日志
     const log = createLogger(req);
     await log(Actions.UPDATE, Modules.OWNER, {
       targetType: 'owner',
       targetId: ownerId,
-      targetName: room_number,
-      details: `更新业主: ${room_number} - ${owner_name || ''}`,
+      targetName: ownerInfo.room_number,
+      details: `更新业主: ${ownerInfo.room_number} - ${ownerInfo.owner_name || ''}`,
     });
 
     res.json({ id: ownerId, ...req.body });

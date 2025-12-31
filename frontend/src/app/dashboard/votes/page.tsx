@@ -288,7 +288,7 @@ export default function VotesPage() {
         vote_status: vote.vote_status || 'pending',
         [field]: value,
       });
-      // 不需要 loadVotes，因为输入框已显示新值
+      loadVotes();
     } catch (error) {
       console.error('更新失败:', error);
     }

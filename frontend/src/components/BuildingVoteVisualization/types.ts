@@ -56,6 +56,12 @@ export const voteStatusConfig: Record<string, { label: string; color: string; bg
   pending: { label: '待投票', color: 'text-slate-600', bgColor: 'bg-slate-300' },
 };
 
+export const sweepStatusConfig: Record<string, { label: string; color: string; bgColor: string }> = {
+  pending: { label: '待扫楼', color: 'text-slate-600', bgColor: 'bg-slate-300' },
+  in_progress: { label: '进行中', color: 'text-white', bgColor: 'bg-amber-500' },
+  completed: { label: '已完成', color: 'text-white', bgColor: 'bg-emerald-500' },
+};
+
 // 楼栋概览相关类型
 export interface UnitStats {
   unit: string;
