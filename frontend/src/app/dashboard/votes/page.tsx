@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Plus, Edit, Trash2, X, Search, Vote, Calendar, Loader2, CheckCircle2, Users, Upload, RefreshCw, Download } from 'lucide-react';
 import DataTable from '@/components/DataTable';
 import { voteApi, communityApi } from '@/lib/api';
-import { cn, roundStatusMap, voteStatusMap, wechatStatusMap, formatDate } from '@/lib/utils';
+import { cn, roundStatusMap, voteStatusMap, wechatStatusMap, sweepStatusMap, formatDate } from '@/lib/utils';
 
 interface Round {
   id: number;
@@ -312,6 +312,25 @@ export default function VotesPage() {
     }
   };
 
+  const handleBatchSweepStatusChange = async (sweepStatus: string) => {
+    if (selectedIds.length === 0 || !selectedRound || !communityId) {
+      alert('请先选择业主');
+      return;
+    }
+    try {
+      await voteApi.batchUpdateSweep({
+        owner_ids: selectedIds,
+        round_id: selectedRound as number,
+        sweep_status: sweepStatus,
+        community_id: communityId,
+      });
+      setSelectedIds([]);
+      loadVotes();
+    } catch (error) {
+      console.error('批量更新扫楼状态失败:', error);
+    }
+  };
+
   // 一键初始化投票记录
   const handleInitVotes = async () => {
     if (!selectedRound || !communityId) {
@@ -536,6 +555,31 @@ export default function VotesPage() {
       ),
     },
     {
+      key: 'sweep_status',
+      header: '扫楼状态',
+      className: 'whitespace-nowrap',
+      render: (item: Vote) => (
+        <select
+          value={item.sweep_status || 'pending'}
+          onChange={(e) => {
+            e.stopPropagation();
+            handleFieldUpdate(item, 'sweep_status', e.target.value);
+          }}
+          onClick={(e) => e.stopPropagation()}
+          className={cn(
+            'px-2 py-1 rounded text-xs border cursor-pointer',
+            sweepStatusMap[item.sweep_status || 'pending']?.color
+          )}
+        >
+          {Object.entries(sweepStatusMap).map(([key, value]) => (
+            <option key={key} value={key}>
+              {value.label}
+            </option>
+          ))}
+        </select>
+      ),
+    },
+    {
       key: 'remark',
       header: '备注',
       className: 'whitespace-nowrap min-w-32',
@@ -551,25 +595,6 @@ export default function VotesPage() {
           onClick={(e) => e.stopPropagation()}
           className="w-full px-2 py-1 text-sm border rounded bg-white"
           placeholder="备注..."
-        />
-      ),
-    },
-    {
-      key: 'sweep_status',
-      header: '扫楼情况',
-      className: 'whitespace-nowrap min-w-32',
-      render: (item: Vote) => (
-        <input
-          type="text"
-          defaultValue={item.sweep_status || ''}
-          onBlur={(e) => {
-            if (e.target.value !== (item.sweep_status || '')) {
-              handleFieldUpdate(item, 'sweep_status', e.target.value);
-            }
-          }}
-          onClick={(e) => e.stopPropagation()}
-          className="w-full px-2 py-1 text-sm border rounded bg-white"
-          placeholder="扫楼..."
         />
       ),
     },
@@ -734,39 +759,62 @@ export default function VotesPage() {
 
             {/* 批量操作 */}
             {selectedIds.length > 0 && (
-              <div className="mt-4 flex items-center gap-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-xl">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                    <Users className="w-4 h-4 text-blue-600" />
+              <div className="mt-4 flex flex-col gap-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-xl">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                      <Users className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <span className="text-sm font-medium text-blue-700">
+                      已选择 {selectedIds.length} 项
+                    </span>
                   </div>
-                  <span className="text-sm font-medium text-blue-700">
-                    已选择 {selectedIds.length} 项
-                  </span>
-                </div>
-                <div className="flex gap-2 flex-wrap">
-                  <button
-                    onClick={() => handleBatchStatusChange('voted')}
-                    className="px-4 py-2 text-sm bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 shadow-sm transition-all duration-200 font-medium"
-                  >
-                    标记已投票
-                  </button>
-                  <button
-                    onClick={() => handleBatchStatusChange('onsite')}
-                    className="px-4 py-2 text-sm bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 shadow-sm transition-all duration-200 font-medium"
-                  >
-                    标记现场投票
-                  </button>
-                  <button
-                    onClick={() => handleBatchStatusChange('refused')}
-                    className="px-4 py-2 text-sm bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 shadow-sm transition-all duration-200 font-medium"
-                  >
-                    标记拒绝
-                  </button>
                   <button
                     onClick={() => setSelectedIds([])}
                     className="px-4 py-2 text-sm bg-white text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-all duration-200 font-medium"
                   >
                     取消选择
+                  </button>
+                </div>
+                <div className="flex gap-2 flex-wrap items-center">
+                  <span className="text-xs text-slate-500 font-medium">投票状态:</span>
+                  <button
+                    onClick={() => handleBatchStatusChange('voted')}
+                    className="px-3 py-1.5 text-sm bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 shadow-sm transition-all duration-200 font-medium"
+                  >
+                    已投票
+                  </button>
+                  <button
+                    onClick={() => handleBatchStatusChange('onsite')}
+                    className="px-3 py-1.5 text-sm bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 shadow-sm transition-all duration-200 font-medium"
+                  >
+                    现场投票
+                  </button>
+                  <button
+                    onClick={() => handleBatchStatusChange('refused')}
+                    className="px-3 py-1.5 text-sm bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 shadow-sm transition-all duration-200 font-medium"
+                  >
+                    拒绝
+                  </button>
+                  <div className="w-px h-6 bg-slate-300 mx-2" />
+                  <span className="text-xs text-slate-500 font-medium">扫楼状态:</span>
+                  <button
+                    onClick={() => handleBatchSweepStatusChange('completed')}
+                    className="px-3 py-1.5 text-sm bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 shadow-sm transition-all duration-200 font-medium"
+                  >
+                    已完成
+                  </button>
+                  <button
+                    onClick={() => handleBatchSweepStatusChange('in_progress')}
+                    className="px-3 py-1.5 text-sm bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg hover:from-amber-600 hover:to-amber-700 shadow-sm transition-all duration-200 font-medium"
+                  >
+                    进行中
+                  </button>
+                  <button
+                    onClick={() => handleBatchSweepStatusChange('pending')}
+                    className="px-3 py-1.5 text-sm bg-slate-400 text-white rounded-lg hover:bg-slate-500 shadow-sm transition-all duration-200 font-medium"
+                  >
+                    待扫楼
                   </button>
                 </div>
               </div>

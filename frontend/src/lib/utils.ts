@@ -50,3 +50,10 @@ export const roundStatusMap: Record<string, { label: string; color: string }> = 
   active: { label: '进行中', color: 'bg-green-100 text-green-800' },
   closed: { label: '已结束', color: 'bg-blue-100 text-blue-800' },
 };
+
+// 扫楼状态映射
+export const sweepStatusMap: Record<string, { label: string; color: string }> = {
+  pending: { label: '待扫楼', color: 'bg-gray-100 text-gray-800' },
+  in_progress: { label: '进行中', color: 'bg-amber-100 text-amber-800' },
+  completed: { label: '已完成', color: 'bg-green-100 text-green-800' },
+};

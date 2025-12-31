@@ -1,14 +1,14 @@
 const express = require('express');
 const { pool } = require('../models/db');
-const { authMiddleware } = require('../middleware/auth');
+const { authMiddleware, ROLES } = require('../middleware/auth');
 
 const router = express.Router();
 
-// 获取操作日志列表（仅管理员）
+// 获取操作日志列表（仅超级管理员）
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: '需要管理员权限' });
+    if (req.user.role !== ROLES.SUPER_ADMIN) {
+      return res.status(403).json({ error: '需要超级管理员权限' });
     }
 
     const {
@@ -93,11 +93,11 @@ router.get('/', authMiddleware, async (req, res) => {
   }
 });
 
-// 获取日志统计信息（仅管理员）
+// 获取日志统计信息（仅超级管理员）
 router.get('/stats', authMiddleware, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: '需要管理员权限' });
+    if (req.user.role !== ROLES.SUPER_ADMIN) {
+      return res.status(403).json({ error: '需要超级管理员权限' });
     }
 
     const { days = 7 } = req.query;
@@ -155,11 +155,11 @@ router.get('/stats', authMiddleware, async (req, res) => {
   }
 });
 
-// 获取可用的筛选选项
+// 获取可用的筛选选项（仅超级管理员）
 router.get('/filters', authMiddleware, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ error: '需要管理员权限' });
+    if (req.user.role !== ROLES.SUPER_ADMIN) {
+      return res.status(403).json({ error: '需要超级管理员权限' });
     }
 
     // 获取所有操作类型
