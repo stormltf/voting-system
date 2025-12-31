@@ -6,7 +6,10 @@ const { authMiddleware } = require('../middleware/auth');
 const { createLogger, Actions, Modules } = require('../utils/logger');
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 } // 限制 5MB
+});
 
 // ===== 投票轮次管理 =====
 
@@ -297,15 +300,26 @@ router.put('/batch', authMiddleware, async (req, res) => {
     }
 
     let successCount = 0;
-    for (const owner_id of owner_ids) {
-      await pool.query(`
-        INSERT INTO votes (owner_id, round_id, vote_status, vote_date)
-        VALUES (?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-          vote_status = VALUES(vote_status),
-          vote_date = VALUES(vote_date)
-      `, [owner_id, round_id, vote_status || 'voted', vote_date || new Date()]);
-      successCount++;
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    try {
+      for (const owner_id of owner_ids) {
+        await connection.query(`
+          INSERT INTO votes (owner_id, round_id, vote_status, vote_date)
+          VALUES (?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            vote_status = VALUES(vote_status),
+            vote_date = VALUES(vote_date)
+        `, [owner_id, round_id, vote_status || 'voted', vote_date || new Date()]);
+        successCount++;
+      }
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
     }
 
     // 记录日志
@@ -346,14 +360,25 @@ router.post('/init', authMiddleware, async (req, res) => {
 
     // 批量插入投票记录（忽略已存在的）
     let insertCount = 0;
-    for (const owner of owners) {
-      const [result] = await pool.query(`
-        INSERT IGNORE INTO votes (owner_id, round_id, vote_status)
-        VALUES (?, ?, 'pending')
-      `, [owner.id, round_id]);
-      if (result.affectedRows > 0) {
-        insertCount++;
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    try {
+      for (const owner of owners) {
+        const [result] = await connection.query(`
+          INSERT IGNORE INTO votes (owner_id, round_id, vote_status)
+          VALUES (?, ?, 'pending')
+        `, [owner.id, round_id]);
+        if (result.affectedRows > 0) {
+          insertCount++;
+        }
       }
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
     }
 
     // 记录日志
@@ -450,46 +475,57 @@ router.post('/import', authMiddleware, upload.single('file'), async (req, res) =
     let notFoundCount = 0;
     const notFoundRooms = [];
 
-    for (let i = 1; i < data.length; i++) {
-      const row = data[i];
-      if (!row || !row[roomColIndex]) continue;
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
 
-      const roomNumber = String(row[roomColIndex]).trim();
-      const voteValue = row[voteColIndex];
-      const remark = remarkColIndex >= 0 ? row[remarkColIndex] : null;
-      const sweepStatus = sweepColIndex >= 0 ? row[sweepColIndex] : null;
+    try {
+      for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        if (!row || !row[roomColIndex]) continue;
 
-      // 标准化房间号进行匹配
-      const normalizedRoom = roomNumber.replace(/[\s-]/g, '');
-      const ownerId = roomToOwnerId[normalizedRoom] || roomToOwnerId[roomNumber];
+        const roomNumber = String(row[roomColIndex]).trim();
+        const voteValue = row[voteColIndex];
+        const remark = remarkColIndex >= 0 ? row[remarkColIndex] : null;
+        const sweepStatus = sweepColIndex >= 0 ? row[sweepColIndex] : null;
 
-      if (!ownerId) {
-        notFoundCount++;
-        if (notFoundRooms.length < 10) {
-          notFoundRooms.push(roomNumber);
+        // 标准化房间号进行匹配
+        const normalizedRoom = roomNumber.replace(/[\s-]/g, '');
+        const ownerId = roomToOwnerId[normalizedRoom] || roomToOwnerId[roomNumber];
+
+        if (!ownerId) {
+          notFoundCount++;
+          if (notFoundRooms.length < 10) {
+            notFoundRooms.push(roomNumber);
+          }
+          continue;
         }
-        continue;
+
+        // 判断投票状态：值为 1 表示已投票
+        const voteStatus = (voteValue === 1 || voteValue === '1' || voteValue === '是') ? 'voted' : 'pending';
+
+        // 插入或更新投票记录（所有业主都导入，包括未投票的）
+        await connection.query(`
+          INSERT INTO votes (owner_id, round_id, vote_status, remark, sweep_status)
+          VALUES (?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            vote_status = VALUES(vote_status),
+            remark = COALESCE(VALUES(remark), remark),
+            sweep_status = COALESCE(VALUES(sweep_status), sweep_status)
+        `, [ownerId, round_id, voteStatus, remark || null, sweepStatus || null]);
+
+        successCount++;
+        if (voteStatus === 'voted') {
+          votedCount++;
+        } else {
+          pendingCount++;
+        }
       }
-
-      // 判断投票状态：值为 1 表示已投票
-      const voteStatus = (voteValue === 1 || voteValue === '1' || voteValue === '是') ? 'voted' : 'pending';
-
-      // 插入或更新投票记录（所有业主都导入，包括未投票的）
-      await pool.query(`
-        INSERT INTO votes (owner_id, round_id, vote_status, remark, sweep_status)
-        VALUES (?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-          vote_status = VALUES(vote_status),
-          remark = COALESCE(VALUES(remark), remark),
-          sweep_status = COALESCE(VALUES(sweep_status), sweep_status)
-      `, [ownerId, round_id, voteStatus, remark || null, sweepStatus || null]);
-
-      successCount++;
-      if (voteStatus === 'voted') {
-        votedCount++;
-      } else {
-        pendingCount++;
-      }
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
     }
 
     // 记录日志

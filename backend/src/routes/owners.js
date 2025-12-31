@@ -8,7 +8,10 @@ const { createLogger, Actions, Modules } = require('../utils/logger');
 const router = express.Router();
 
 // 配置文件上传
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 } // 限制 5MB
+});
 
 // 获取业主列表（支持分页、搜索、筛选）
 router.get('/', authMiddleware, async (req, res) => {
@@ -172,8 +175,8 @@ router.post('/', authMiddleware, async (req, res) => {
         phone1, phone2, phone3, wechat_status, wechat_contact, house_status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [phase_id, seq_no, building, unit, room, room_number,
-        owner_name, area, parking_no, parking_area,
-        phone1, phone2, phone3, wechat_status, wechat_contact, house_status]);
+      owner_name, area, parking_no, parking_area,
+      phone1, phone2, phone3, wechat_status, wechat_contact, house_status]);
 
     // 记录日志
     const log = createLogger(req);
@@ -211,9 +214,9 @@ router.put('/:id', authMiddleware, async (req, res) => {
         wechat_contact = ?, house_status = ?
       WHERE id = ?
     `, [seq_no, building, unit, room, room_number,
-        owner_name, area, parking_no, parking_area,
-        phone1, phone2, phone3, wechat_status, wechat_contact, house_status,
-        req.params.id]);
+      owner_name, area, parking_no, parking_area,
+      phone1, phone2, phone3, wechat_status, wechat_contact, house_status,
+      req.params.id]);
 
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: '业主不存在' });
@@ -312,77 +315,89 @@ router.post('/import', authMiddleware, upload.single('file'), async (req, res) =
     let failCount = 0;
     const errors = [];
 
-    for (const row of data) {
-      try {
-        // 映射列名
-        const owner = {};
-        for (const [cnName, enName] of Object.entries(columnMap)) {
-          if (row[cnName] !== undefined) {
-            owner[enName] = row[cnName];
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    try {
+      for (const row of data) {
+        try {
+          // 映射列名
+          const owner = {};
+          for (const [cnName, enName] of Object.entries(columnMap)) {
+            if (row[cnName] !== undefined) {
+              owner[enName] = row[cnName];
+            }
           }
-        }
 
-        if (!owner.room_number) {
+          if (!owner.room_number) {
+            failCount++;
+            errors.push(`第 ${row['序号'] || '?'} 行: 缺少房间号`);
+            continue;
+          }
+
+          // 解析房间号 (格式: 01-01-0101 -> 楼号-单元-房间)
+          const roomParts = String(owner.room_number).split('-');
+          if (roomParts.length >= 3) {
+            owner.building = roomParts[0];
+            owner.unit = roomParts[1];
+            owner.room = roomParts.slice(2).join('-');
+          }
+
+          // 处理面积 (去掉 + 号)
+          if (owner.area) {
+            owner.area = parseFloat(String(owner.area).replace('+', '')) || null;
+          }
+
+          // 插入或更新
+          await connection.query(`
+            INSERT INTO owners (phase_id, seq_no, building, unit, room, room_number,
+              owner_name, area, parking_no, parking_area,
+              phone1, phone2, phone3, wechat_status, wechat_contact, house_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+              seq_no = VALUES(seq_no),
+              owner_name = VALUES(owner_name),
+              area = VALUES(area),
+              parking_no = VALUES(parking_no),
+              parking_area = VALUES(parking_area),
+              phone1 = VALUES(phone1),
+              phone2 = VALUES(phone2),
+              phone3 = VALUES(phone3),
+              wechat_status = VALUES(wechat_status),
+              wechat_contact = VALUES(wechat_contact),
+              house_status = VALUES(house_status)
+          `, [
+            phase_id,
+            owner.seq_no,
+            owner.building,
+            owner.unit,
+            owner.room,
+            owner.room_number,
+            owner.owner_name,
+            owner.area,
+            owner.parking_no,
+            owner.parking_area ? parseFloat(owner.parking_area) : null,
+            owner.phone1,
+            owner.phone2,
+            owner.phone3,
+            owner.wechat_status,
+            owner.wechat_contact,
+            owner.house_status
+          ]);
+
+          successCount++;
+        } catch (err) {
           failCount++;
-          errors.push(`第 ${row['序号'] || '?'} 行: 缺少房间号`);
-          continue;
+          errors.push(`第 ${row['序号'] || '?'} 行: ${err.message}`);
         }
-
-        // 解析房间号 (格式: 01-01-0101 -> 楼号-单元-房间)
-        const roomParts = String(owner.room_number).split('-');
-        if (roomParts.length >= 3) {
-          owner.building = roomParts[0];
-          owner.unit = roomParts[1];
-          owner.room = roomParts.slice(2).join('-');
-        }
-
-        // 处理面积 (去掉 + 号)
-        if (owner.area) {
-          owner.area = parseFloat(String(owner.area).replace('+', '')) || null;
-        }
-
-        // 插入或更新
-        await pool.query(`
-          INSERT INTO owners (phase_id, seq_no, building, unit, room, room_number,
-            owner_name, area, parking_no, parking_area,
-            phone1, phone2, phone3, wechat_status, wechat_contact, house_status)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON DUPLICATE KEY UPDATE
-            seq_no = VALUES(seq_no),
-            owner_name = VALUES(owner_name),
-            area = VALUES(area),
-            parking_no = VALUES(parking_no),
-            parking_area = VALUES(parking_area),
-            phone1 = VALUES(phone1),
-            phone2 = VALUES(phone2),
-            phone3 = VALUES(phone3),
-            wechat_status = VALUES(wechat_status),
-            wechat_contact = VALUES(wechat_contact),
-            house_status = VALUES(house_status)
-        `, [
-          phase_id,
-          owner.seq_no,
-          owner.building,
-          owner.unit,
-          owner.room,
-          owner.room_number,
-          owner.owner_name,
-          owner.area,
-          owner.parking_no,
-          owner.parking_area ? parseFloat(owner.parking_area) : null,
-          owner.phone1,
-          owner.phone2,
-          owner.phone3,
-          owner.wechat_status,
-          owner.wechat_contact,
-          owner.house_status
-        ]);
-
-        successCount++;
-      } catch (err) {
-        failCount++;
-        errors.push(`第 ${row['序号'] || '?'} 行: ${err.message}`);
       }
+
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
     }
 
     // 记录日志
