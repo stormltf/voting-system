@@ -329,7 +329,7 @@ router.delete('/:id', authMiddleware, adminMiddleware, async (req, res) => {
   }
 });
 
-// 批量导入业主数据（管理员可操作）
+// 批量导入业主数据（管理员可操作） - 性能优化版
 router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
@@ -376,93 +376,101 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
       '房屋状态': 'house_status'
     };
 
-    let successCount = 0;
-    let failCount = 0;
+    const bulkData = [];
     const errors = [];
+    let failCount = 0;
 
-    const connection = await pool.getConnection();
-    await connection.beginTransaction();
-
-    try {
-      for (const row of data) {
-        try {
-          // 映射列名
-          const owner = {};
-          for (const [cnName, enName] of Object.entries(columnMap)) {
-            if (row[cnName] !== undefined) {
-              owner[enName] = row[cnName];
-            }
+    // 预处理数据
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+      try {
+        const owner = {};
+        for (const [cnName, enName] of Object.entries(columnMap)) {
+          if (row[cnName] !== undefined) {
+            owner[enName] = row[cnName];
           }
-
-          if (!owner.room_number) {
-            failCount++;
-            errors.push(`第 ${row['序号'] || '?'} 行: 缺少房间号`);
-            continue;
-          }
-
-          // 解析房间号 (格式: 01-01-0101 -> 楼号-单元-房间)
-          const roomParts = String(owner.room_number).split('-');
-          if (roomParts.length >= 3) {
-            owner.building = roomParts[0];
-            owner.unit = roomParts[1];
-            owner.room = roomParts.slice(2).join('-');
-          }
-
-          // 处理面积 (去掉 + 号)
-          if (owner.area) {
-            owner.area = parseFloat(String(owner.area).replace('+', '')) || null;
-          }
-
-          // 插入或更新
-          await connection.query(`
-            INSERT INTO owners (phase_id, seq_no, building, unit, room, room_number,
-              owner_name, area, parking_no, parking_area,
-              phone1, phone2, phone3, wechat_status, wechat_contact, house_status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE
-              seq_no = VALUES(seq_no),
-              owner_name = VALUES(owner_name),
-              area = VALUES(area),
-              parking_no = VALUES(parking_no),
-              parking_area = VALUES(parking_area),
-              phone1 = VALUES(phone1),
-              phone2 = VALUES(phone2),
-              phone3 = VALUES(phone3),
-              wechat_status = VALUES(wechat_status),
-              wechat_contact = VALUES(wechat_contact),
-              house_status = VALUES(house_status)
-          `, [
-            phase_id,
-            owner.seq_no,
-            owner.building,
-            owner.unit,
-            owner.room,
-            owner.room_number,
-            owner.owner_name,
-            owner.area,
-            owner.parking_no,
-            owner.parking_area ? parseFloat(owner.parking_area) : null,
-            owner.phone1,
-            owner.phone2,
-            owner.phone3,
-            owner.wechat_status,
-            owner.wechat_contact,
-            owner.house_status
-          ]);
-
-          successCount++;
-        } catch (err) {
-          failCount++;
-          errors.push(`第 ${row['序号'] || '?'} 行: ${err.message}`);
         }
-      }
 
-      await connection.commit();
-    } catch (error) {
-      await connection.rollback();
-      throw error;
-    } finally {
-      connection.release();
+        if (!owner.room_number) {
+          failCount++;
+          errors.push(`第 ${row['序号'] || (i + 1)} 行: 缺少房间号`);
+          continue;
+        }
+
+        // 解析房间号 (格式: 01-01-0101 -> 楼号-单元-房间)
+        const roomParts = String(owner.room_number).split('-');
+        let building = null, unit = null, room = null;
+        if (roomParts.length >= 3) {
+          building = roomParts[0];
+          unit = roomParts[1];
+          room = roomParts.slice(2).join('-');
+        }
+
+        // 处理面积
+        let area = null;
+        if (owner.area) {
+          area = parseFloat(String(owner.area).replace('+', '')) || null;
+        }
+
+        let parking_area = null;
+        if (owner.parking_area) {
+          parking_area = parseFloat(String(owner.parking_area)) || null;
+        }
+
+        // 构造数据数组 [phase_id, seq_no, building, unit, room, room_number, owner_name, area, parking_no, parking_area, phone1, phone2, phone3, wechat_status, wechat_contact, house_status]
+        bulkData.push([
+          phase_id,
+          owner.seq_no || null,
+          building,
+          unit,
+          room,
+          owner.room_number,
+          owner.owner_name || null,
+          area,
+          owner.parking_no || null,
+          parking_area,
+          owner.phone1 || null,
+          owner.phone2 || null,
+          owner.phone3 || null,
+          owner.wechat_status || '',
+          owner.wechat_contact || null,
+          owner.house_status || null
+        ]);
+
+      } catch (err) {
+        failCount++;
+        errors.push(`第 ${row['序号'] || (i + 1)} 行: 数据格式错误`);
+      }
+    }
+
+    // 批量执行插入/更新
+    let successCount = 0;
+    if (bulkData.length > 0) {
+      const BATCH_SIZE = 1000;
+      for (let i = 0; i < bulkData.length; i += BATCH_SIZE) {
+        const batch = bulkData.slice(i, i + BATCH_SIZE);
+
+        await pool.query(`
+          INSERT INTO owners (phase_id, seq_no, building, unit, room, room_number,
+            owner_name, area, parking_no, parking_area,
+            phone1, phone2, phone3, wechat_status, wechat_contact, house_status)
+          VALUES ?
+          ON DUPLICATE KEY UPDATE
+            seq_no = VALUES(seq_no),
+            owner_name = VALUES(owner_name),
+            area = VALUES(area),
+            parking_no = VALUES(parking_no),
+            parking_area = VALUES(parking_area),
+            phone1 = VALUES(phone1),
+            phone2 = VALUES(phone2),
+            phone3 = VALUES(phone3),
+            wechat_status = VALUES(wechat_status),
+            wechat_contact = VALUES(wechat_contact),
+            house_status = VALUES(house_status)
+        `, [batch]);
+
+        successCount += batch.length;
+      }
     }
 
     // 记录日志
