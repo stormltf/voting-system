@@ -6,12 +6,18 @@
 -- USE voting_system;
 
 -- 1. 系统用户表
+-- 角色说明：
+--   super_admin: 超级管理员，可以查看和管理所有小区，community_id 为 NULL
+--   community_admin: 小区管理员，可以查看和管理本小区的数据
+--   community_user: 小区普通用户，只能查看本小区的数据
+-- 注意：TiDB 不支持 ENUM，使用 VARCHAR 替代，应用层需要验证值的有效性
 CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   username VARCHAR(50) UNIQUE NOT NULL,
   password VARCHAR(255) NOT NULL,
   name VARCHAR(100),
-  role VARCHAR(10) DEFAULT 'staff',
+  role VARCHAR(20) DEFAULT 'community_user',
+  community_id INT DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -78,6 +84,8 @@ CREATE TABLE IF NOT EXISTS vote_rounds (
 );
 
 -- 6. 投票记录表
+-- vote_status: pending(待投票), voted(已投票), refused(拒绝), onsite(现场投票), video(视频投票)
+-- sweep_status: pending(待扫楼), in_progress(进行中), completed(已完成)
 CREATE TABLE IF NOT EXISTS votes (
   id INT AUTO_INCREMENT PRIMARY KEY,
   owner_id INT NOT NULL,
@@ -86,7 +94,9 @@ CREATE TABLE IF NOT EXISTS votes (
   vote_phone VARCHAR(50),
   vote_date DATE,
   remark TEXT,
-  sweep_status VARCHAR(100),
+  sweep_status VARCHAR(20) DEFAULT 'pending',
+  sweep_remark TEXT,
+  sweep_date DATE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY unique_vote (owner_id, round_id)
@@ -120,10 +130,12 @@ CREATE INDEX idx_logs_user ON operation_logs(user_id);
 CREATE INDEX idx_logs_action ON operation_logs(action);
 CREATE INDEX idx_logs_module ON operation_logs(module);
 CREATE INDEX idx_logs_created ON operation_logs(created_at);
+CREATE INDEX idx_users_role ON users(role);
+CREATE INDEX idx_users_community ON users(community_id);
 
--- 插入默认管理员账户 (密码: admin123)
-INSERT INTO users (username, password, name, role) VALUES
-('admin', '$2a$10$r52knN1WReUMaI3yLGcDVeSAPc5m.HbslMUuwFB6084KN5DeE5.5C', '系统管理员', 'admin');
+-- 插入默认超级管理员账户 (密码: admin123)
+INSERT INTO users (username, password, name, role, community_id) VALUES
+('admin', '$2a$10$r52knN1WReUMaI3yLGcDVeSAPc5m.HbslMUuwFB6084KN5DeE5.5C', '系统管理员', 'super_admin', NULL);
 
 -- 插入示例小区数据
 INSERT INTO communities (name, address) VALUES

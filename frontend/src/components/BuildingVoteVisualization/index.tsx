@@ -344,7 +344,7 @@ export default function BuildingVoteVisualization({ communityId }: Props) {
                                 />
                               </div>
                               <span className="text-xs text-slate-500 mt-1">
-                                {unit.voted_count}/{unit.total_rooms}
+                                {percent}% ({unit.voted_count}/{unit.total_rooms})
                               </span>
 
                               {/* Hover 提示 */}

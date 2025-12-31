@@ -347,7 +347,7 @@ export default function SweepStatusVisualization({ communityId }: Props) {
                                 />
                               </div>
                               <span className="text-xs text-slate-500 mt-1">
-                                {unit.completed_count}/{unit.total_rooms}
+                                {percent}% ({unit.completed_count}/{unit.total_rooms})
                               </span>
 
                               {/* Hover 提示 */}

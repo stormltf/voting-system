@@ -36,7 +36,7 @@ export default function OwnersPage() {
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({
     page: 1,
-    limit: 20,
+    limit: 3000,
     total: 0,
     totalPages: 0,
   });

@@ -4,12 +4,17 @@ CREATE DATABASE IF NOT EXISTS voting_system DEFAULT CHARACTER SET utf8mb4 COLLAT
 USE voting_system;
 
 -- 1. 系统用户表
+-- 角色说明：
+--   super_admin: 超级管理员，可以查看和管理所有小区，community_id 为 NULL
+--   community_admin: 小区管理员，可以查看和管理本小区的数据
+--   community_user: 小区普通用户，只能查看本小区的数据
 CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   username VARCHAR(50) UNIQUE NOT NULL,
   password VARCHAR(255) NOT NULL,
   name VARCHAR(100),
-  role ENUM('admin', 'staff') DEFAULT 'staff',
+  role ENUM('super_admin', 'community_admin', 'community_user') DEFAULT 'community_user',
+  community_id INT DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -125,9 +130,13 @@ CREATE INDEX idx_owners_name ON owners(owner_name);
 CREATE INDEX idx_votes_round ON votes(round_id);
 CREATE INDEX idx_votes_status ON votes(vote_status);
 
--- 插入默认管理员账户 (密码: admin123)
-INSERT INTO users (username, password, name, role) VALUES
-('admin', '$2a$10$r52knN1WReUMaI3yLGcDVeSAPc5m.HbslMUuwFB6084KN5DeE5.5C', '系统管理员', 'admin');
+-- 创建用户相关索引
+CREATE INDEX idx_users_role ON users(role);
+CREATE INDEX idx_users_community ON users(community_id);
+
+-- 插入默认超级管理员账户 (密码: admin123)
+INSERT INTO users (username, password, name, role, community_id) VALUES
+('admin', '$2a$10$r52knN1WReUMaI3yLGcDVeSAPc5m.HbslMUuwFB6084KN5DeE5.5C', '系统管理员', 'super_admin', NULL);
 
 -- 插入示例小区数据
 INSERT INTO communities (name, address) VALUES
