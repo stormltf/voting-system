@@ -1,5 +1,6 @@
 # 前端 Dockerfile - 多阶段构建
-FROM node:18-alpine AS builder
+# Next.js 16 requires Node.js >= 20.9.0
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -20,7 +21,7 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN npm run build
 
 # 生产镜像
-FROM node:18-alpine AS runner
+FROM node:22-alpine AS runner
 
 WORKDIR /app
 

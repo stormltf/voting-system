@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { communityApi } from '@/lib/api';
 
 interface Community {
@@ -49,11 +49,7 @@ export default function Sidebar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  useEffect(() => {
-    loadCommunities();
-  }, []);
-
-  const loadCommunities = async () => {
+  const loadCommunities = useCallback(async () => {
     try {
       const response = await communityApi.getAll();
       setCommunities(response.data);
@@ -67,7 +63,11 @@ export default function Sidebar() {
     } catch (error) {
       console.error('加载小区列表失败:', error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadCommunities();
+  }, [loadCommunities]);
 
   const handleSelectCommunity = (community: Community) => {
     setSelectedCommunity(community);

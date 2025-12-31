@@ -1074,8 +1074,8 @@ export default function VotesPage() {
               <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl text-sm text-blue-700">
                 <p className="font-medium mb-2">Excel 格式要求：</p>
                 <ul className="list-disc list-inside space-y-1 text-blue-600">
-                  <li>必须包含"房间号"列</li>
-                  <li>投票状态列（如"25B投否"），值为 1 表示已投票</li>
+                  <li>必须包含「房间号」列</li>
+                  <li>投票状态列（如「25B投否」），值为 1 表示已投票</li>
                   <li>可选：备注列、扫楼情况列</li>
                 </ul>
               </div>

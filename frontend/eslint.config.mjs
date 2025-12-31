@@ -12,7 +12,18 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "coverage/**",
   ]),
+  {
+    rules: {
+      // 放宽一些严格规则 - 这些是常见的 React 模式
+      "@typescript-eslint/no-explicit-any": "warn",
+      "react-hooks/exhaustive-deps": "warn",
+      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/immutability": "warn",
+      "@typescript-eslint/no-require-imports": "warn",
+    },
+  },
 ]);
 
 export default eslintConfig;

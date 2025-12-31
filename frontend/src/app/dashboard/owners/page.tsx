@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Upload, Edit2, Check, X, Users, FileSpreadsheet, Loader2, Download, Plus, ChevronDown } from 'lucide-react';
+import { Search, Upload, Edit2, Check, X, Users, FileSpreadsheet, Loader2, Download, Plus } from 'lucide-react';
 import DataTable from '@/components/DataTable';
 import { ownerApi, communityApi } from '@/lib/api';
 import { cn, wechatStatusMap } from '@/lib/utils';
