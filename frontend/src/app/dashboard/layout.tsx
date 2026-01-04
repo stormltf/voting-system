@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import Sidebar from '@/components/Sidebar';
+import MobileNav, { MobileOverlay } from '@/components/MobileNav';
 
 export default function DashboardLayout({
   children,
@@ -12,12 +13,28 @@ export default function DashboardLayout({
 }) {
   const { user, isLoading } = useAuth();
   const router = useRouter();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const hasRedirected = useRef(false);
 
+  // Redirect to login if not authenticated
   useEffect(() => {
-    if (!isLoading && !user) {
-      router.push('/login');
+    if (!isLoading && !user && !hasRedirected.current) {
+      hasRedirected.current = true;
+      router.replace('/login');
     }
-  }, [user, isLoading, router]);
+  }, [user, isLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Prevent body scroll when mobile sidebar is open
+  useEffect(() => {
+    if (sidebarOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [sidebarOpen]);
 
   if (isLoading) {
     return (
@@ -36,9 +53,27 @@ export default function DashboardLayout({
 
   return (
     <div className="flex h-screen bg-slate-100">
-      <Sidebar />
-      <main className="flex-1 overflow-auto">
-        <div className="p-6">{children}</div>
+      {/* Mobile navigation header */}
+      <MobileNav
+        isOpen={sidebarOpen}
+        onToggle={() => setSidebarOpen(!sidebarOpen)}
+      />
+
+      {/* Mobile overlay */}
+      <MobileOverlay
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
+
+      {/* Sidebar */}
+      <Sidebar
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
+
+      {/* Main content */}
+      <main className="flex-1 overflow-auto pt-14 lg:pt-0">
+        <div className="p-4 lg:p-6">{children}</div>
       </main>
     </div>
   );

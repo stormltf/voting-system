@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import RoomCell from './RoomCell';
 import { UnitRoomsResponse, RoomData } from './types';
+import { useSwipeSelect } from '@/hooks/useSwipeSelect';
 
 interface Props {
   data: UnitRoomsResponse;
@@ -14,6 +15,12 @@ interface Props {
 
 export default function FloorGrid({ data, onRoomClick, selectable, selectedRooms, onSelectRoom }: Props) {
   const { floors, meta } = data;
+
+  // 滑动选择
+  const { containerProps } = useSwipeSelect({
+    enabled: !!selectable,
+    onSelect: (id, selected) => onSelectRoom?.(id, selected),
+  });
 
   // 从高到低排列楼层
   const sortedFloors = useMemo(() => {
@@ -58,8 +65,16 @@ export default function FloorGrid({ data, onRoomClick, selectable, selectedRooms
         </div>
       </div>
 
-      {/* 楼层网格 */}
-      <div className="relative border border-slate-200 rounded-xl overflow-hidden">
+      {/* 楼层网格 - 支持滑动多选 */}
+      <div
+        className="relative border border-slate-200 rounded-xl overflow-hidden select-none"
+        {...(selectable ? containerProps : {})}
+      >
+        {selectable && (
+          <div className="absolute top-2 right-2 z-10 px-2 py-1 bg-blue-500 text-white text-xs rounded-full">
+            滑动可多选
+          </div>
+        )}
         {sortedFloors.map(floor => (
           <div
             key={floor}

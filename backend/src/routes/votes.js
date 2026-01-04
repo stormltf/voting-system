@@ -212,7 +212,7 @@ router.delete('/rounds/:id', authMiddleware, adminMiddleware, async (req, res) =
 // 获取投票记录
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const { round_id, phase_id, community_id, vote_status, search, page = 1, limit = 20 } = req.query;
+    const { round_id, phase_id, community_id, vote_status, sweep_status, search, page = 1, limit = 20 } = req.query;
     const offset = (page - 1) * limit;
 
     let whereConditions = ['1=1'];
@@ -240,6 +240,11 @@ router.get('/', authMiddleware, async (req, res) => {
     if (vote_status) {
       whereConditions.push('v.vote_status = ?');
       params.push(vote_status);
+    }
+
+    if (sweep_status) {
+      whereConditions.push('v.sweep_status = ?');
+      params.push(sweep_status);
     }
 
     if (search) {

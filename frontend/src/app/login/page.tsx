@@ -21,7 +21,7 @@ export default function LoginPage() {
 
     try {
       await login(username, password);
-      router.push('/');
+      router.replace('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.error || '登录失败，请检查用户名和密码');
     } finally {
@@ -129,7 +129,7 @@ export default function LoginPage() {
 
         {/* 底部版权 */}
         <p className="text-center text-sm text-slate-500 mt-8">
-          业主大会投票管理系统 &copy; 2024
+          业主大会投票管理系统 &copy; 2026
         </p>
       </div>
     </div>

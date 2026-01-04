@@ -30,6 +30,8 @@ export default function SweepRoomCell({ room, onClick, selectable, selected, onS
         onClick={handleClick}
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
+        data-selectable-id={selectable ? room.owner_id : undefined}
+        data-selected={selected}
         className={`
           w-10 h-10 rounded-lg flex items-center justify-center
           text-xs font-medium

@@ -2,6 +2,7 @@
 
 import { SweepUnitRoomsResponse, SweepRoomData } from './types';
 import SweepRoomCell from './SweepRoomCell';
+import { useSwipeSelect } from '@/hooks/useSwipeSelect';
 
 interface Props {
   data: SweepUnitRoomsResponse;
@@ -13,6 +14,12 @@ interface Props {
 
 export default function SweepFloorGrid({ data, onRoomClick, selectable, selectedRooms, onSelectRoom }: Props) {
   const { floors, meta } = data;
+
+  // 滑动选择
+  const { containerProps } = useSwipeSelect({
+    enabled: !!selectable,
+    onSelect: (id, selected) => onSelectRoom?.(id, selected),
+  });
 
   // 从最高楼层到最低楼层排序
   const sortedFloors = Object.keys(floors)
@@ -53,8 +60,16 @@ export default function SweepFloorGrid({ data, onRoomClick, selectable, selected
         </div>
       </div>
 
-      {/* 楼层网格 */}
-      <div className="space-y-2">
+      {/* 楼层网格 - 支持滑动多选 */}
+      <div
+        className="space-y-2 select-none relative"
+        {...(selectable ? containerProps : {})}
+      >
+        {selectable && (
+          <div className="absolute top-0 right-0 z-10 px-2 py-1 bg-amber-500 text-white text-xs rounded-full">
+            滑动可多选
+          </div>
+        )}
         {sortedFloors.map((floor) => (
           <div key={floor} className="flex items-center gap-3">
             {/* 楼层标签 */}

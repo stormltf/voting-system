@@ -30,6 +30,8 @@ export default function RoomCell({ room, onClick, selectable, selected, onSelect
         onClick={handleClick}
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
+        data-selectable-id={selectable ? room.owner_id : undefined}
+        data-selected={selected}
         className={`
           w-10 h-10 rounded-lg flex items-center justify-center
           text-xs font-medium
