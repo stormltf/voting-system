@@ -27,8 +27,12 @@ const corsOptions = {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
+      // 允许本地 IP 访问（用于移动端测试）
+      if (origin && origin.match(/^http:\/\/(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/)) {
+        callback(null, true);
+      }
       // 生产环境也允许 Render 的域名
-      if (origin && (origin.endsWith('.onrender.com') || origin.endsWith('.vercel.app'))) {
+      else if (origin && (origin.endsWith('.onrender.com') || origin.endsWith('.vercel.app'))) {
         callback(null, true);
       } else {
         callback(new Error('Not allowed by CORS'));

@@ -81,6 +81,7 @@ export default function VotesPage() {
   // 筛选
   const [selectedRound, setSelectedRound] = useState<number | ''>('');
   const [selectedStatus, setSelectedStatus] = useState<string>('');
+  const [selectedSweepStatus, setSelectedSweepStatus] = useState<string>('');
   const [selectedPhase, setSelectedPhase] = useState<number | ''>('');
   const [search, setSearch] = useState('');
   const [communityId, setCommunityId] = useState<number | null>(null);
@@ -147,7 +148,7 @@ export default function VotesPage() {
     if (activeTab === 'records' && selectedRound) {
       loadVotes();
     }
-  }, [activeTab, pagination.page, selectedRound, selectedStatus, selectedPhase, search, communityId]);
+  }, [activeTab, pagination.page, selectedRound, selectedStatus, selectedSweepStatus, selectedPhase, search, communityId]);
 
   const loadPhases = async () => {
     if (!communityId) return;
@@ -193,6 +194,7 @@ export default function VotesPage() {
       };
       if (selectedPhase) params.phase_id = selectedPhase;
       if (selectedStatus) params.vote_status = selectedStatus;
+      if (selectedSweepStatus) params.sweep_status = selectedSweepStatus;
       if (search) params.search = search;
 
       const response = await voteApi.getVotes(params);
@@ -496,8 +498,8 @@ export default function VotesPage() {
   ];
 
   const voteColumns = [
-    { key: 'phase_name', header: '期数', className: 'whitespace-nowrap' },
-    { key: 'room_number', header: '房间号', className: 'whitespace-nowrap' },
+    { key: 'phase_name', header: '期数', className: 'whitespace-nowrap min-w-16', sticky: true, stickyOffset: 0 },
+    { key: 'room_number', header: '房间号', className: 'whitespace-nowrap min-w-20', sticky: true, stickyOffset: 64 },
     { key: 'owner_name', header: '姓名', className: 'whitespace-nowrap' },
     {
       key: 'area',
@@ -604,13 +606,13 @@ export default function VotesPage() {
     <div className="space-y-6">
       {/* 页面标题 */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
-            <Vote className="w-6 h-6 text-white" />
+        <div className="flex items-center gap-3 md:gap-4">
+          <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
+            <Vote className="w-5 h-5 md:w-6 md:h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">投票管理</h1>
-            <p className="text-slate-500 mt-0.5">管理投票轮次和记录投票状态</p>
+            <h1 className="text-xl md:text-2xl font-bold text-slate-900">投票管理</h1>
+            <p className="text-slate-500 mt-0.5 text-sm md:text-base">管理投票轮次和记录投票状态</p>
           </div>
         </div>
       </div>
@@ -647,10 +649,10 @@ export default function VotesPage() {
       {activeTab === 'records' && (
         <div className="space-y-4">
           {/* 筛选 */}
-          <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm p-5">
-            <div className="flex flex-wrap gap-4 items-center">
+          <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm p-4 md:p-5">
+            <div className="flex flex-wrap gap-3 md:gap-4 items-center">
               {/* 搜索框 */}
-              <div className="flex-1 min-w-64">
+              <div className="w-full md:flex-1 md:min-w-64">
                 <div className="relative group">
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
                   <input
@@ -670,9 +672,9 @@ export default function VotesPage() {
                   setSelectedRound(e.target.value ? parseInt(e.target.value) : '');
                   setPagination((prev) => ({ ...prev, page: 1 }));
                 }}
-                className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer"
+                className="flex-1 min-w-0 md:flex-none px-3 md:px-4 min-h-[44px] py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer text-base"
               >
-                <option value="">选择投票轮次</option>
+                <option value="">选择轮次</option>
                 {rounds.map((round) => (
                   <option key={round.id} value={round.id}>
                     {round.name} {round.status === 'active' && '(进行中)'}
@@ -686,7 +688,7 @@ export default function VotesPage() {
                   setSelectedPhase(e.target.value ? parseInt(e.target.value) : '');
                   setPagination((prev) => ({ ...prev, page: 1 }));
                 }}
-                className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer"
+                className="flex-1 min-w-0 md:flex-none px-3 md:px-4 min-h-[44px] py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer text-base"
               >
                 <option value="">全部期数</option>
                 {phases.map((phase) => (
@@ -702,10 +704,26 @@ export default function VotesPage() {
                   setSelectedStatus(e.target.value);
                   setPagination((prev) => ({ ...prev, page: 1 }));
                 }}
-                className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer"
+                className="flex-1 min-w-0 md:flex-none px-3 md:px-4 min-h-[44px] py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer text-base"
               >
-                <option value="">全部状态</option>
+                <option value="">全部投票状态</option>
                 {Object.entries(voteStatusMap).map(([key, value]) => (
+                  <option key={key} value={key}>
+                    {value.label}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={selectedSweepStatus}
+                onChange={(e) => {
+                  setSelectedSweepStatus(e.target.value);
+                  setPagination((prev) => ({ ...prev, page: 1 }));
+                }}
+                className="flex-1 min-w-0 md:flex-none px-3 md:px-4 min-h-[44px] py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer text-base"
+              >
+                <option value="">全部扫楼状态</option>
+                {Object.entries(sweepStatusMap).map(([key, value]) => (
                   <option key={key} value={key}>
                     {value.label}
                   </option>
@@ -714,46 +732,49 @@ export default function VotesPage() {
 
               <button
                 onClick={handleSearch}
-                className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 shadow-md shadow-blue-500/20 transition-all duration-200 font-medium"
+                className="w-full md:w-auto px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 shadow-md shadow-blue-500/20 transition-all duration-200 font-medium"
               >
                 搜索
               </button>
 
               {/* 初始化、导出和导入按钮 */}
               {selectedRound && communityId && (
-                <>
+                <div className="w-full md:w-auto flex flex-wrap gap-2 md:gap-3">
                   <button
                     onClick={handleInitVotes}
                     disabled={initializingVotes}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 shadow-md shadow-emerald-500/20 transition-all duration-200 font-medium disabled:opacity-50"
+                    className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 md:px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 shadow-md shadow-emerald-500/20 transition-all duration-200 font-medium disabled:opacity-50 text-sm md:text-base"
                   >
                     {initializingVotes ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                       <RefreshCw className="w-4 h-4" />
                     )}
-                    初始化记录
+                    <span className="hidden sm:inline">初始化记录</span>
+                    <span className="sm:hidden">初始化</span>
                   </button>
                   <button
                     onClick={handleExport}
                     disabled={exporting}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 shadow-md shadow-blue-500/20 transition-all duration-200 font-medium disabled:opacity-50"
+                    className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 md:px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 shadow-md shadow-blue-500/20 transition-all duration-200 font-medium disabled:opacity-50 text-sm md:text-base"
                   >
                     {exporting ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                       <Download className="w-4 h-4" />
                     )}
-                    导出 Excel
+                    <span className="hidden sm:inline">导出 Excel</span>
+                    <span className="sm:hidden">导出</span>
                   </button>
                   <button
                     onClick={() => setShowImportModal(true)}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl hover:from-purple-600 hover:to-purple-700 shadow-md shadow-purple-500/20 transition-all duration-200 font-medium"
+                    className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 md:px-4 py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl hover:from-purple-600 hover:to-purple-700 shadow-md shadow-purple-500/20 transition-all duration-200 font-medium text-sm md:text-base"
                   >
                     <Upload className="w-4 h-4" />
-                    导入投票
+                    <span className="hidden sm:inline">导入投票</span>
+                    <span className="sm:hidden">导入</span>
                   </button>
-                </>
+                </div>
               )}
             </div>
 
@@ -822,14 +843,14 @@ export default function VotesPage() {
           </div>
 
           {!communityId ? (
-            <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm p-12 text-center">
+            <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm p-8 md:p-12 text-center">
               <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
                 <Vote className="w-8 h-8 text-slate-400" />
               </div>
-              <p className="text-slate-500">请先在左侧菜单选择小区</p>
+              <p className="text-slate-500">请先在菜单中选择小区</p>
             </div>
           ) : !selectedRound ? (
-            <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm p-12 text-center">
+            <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm p-8 md:p-12 text-center">
               <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
                 <Vote className="w-8 h-8 text-slate-400" />
               </div>
@@ -854,11 +875,11 @@ export default function VotesPage() {
       {activeTab === 'rounds' && (
         <div className="space-y-4">
           {!communityId ? (
-            <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm p-12 text-center">
+            <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm p-8 md:p-12 text-center">
               <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
                 <Calendar className="w-8 h-8 text-slate-400" />
               </div>
-              <p className="text-slate-500">请先在左侧菜单选择小区</p>
+              <p className="text-slate-500">请先在菜单中选择小区</p>
             </div>
           ) : (
             <>

@@ -45,6 +45,7 @@ export default function OwnersPage() {
   const [search, setSearch] = useState('');
   const [selectedPhase, setSelectedPhase] = useState<number | ''>('');
   const [selectedWechatStatus, setSelectedWechatStatus] = useState<string>('');
+  const [selectedHouseStatus, setSelectedHouseStatus] = useState<string>('');
 
   // 基础数据
   const [phases, setPhases] = useState<Phase[]>([]);
@@ -109,7 +110,7 @@ export default function OwnersPage() {
 
   useEffect(() => {
     loadOwners();
-  }, [pagination.page, search, selectedPhase, selectedWechatStatus, communityId]);
+  }, [pagination.page, search, selectedPhase, selectedWechatStatus, selectedHouseStatus, communityId]);
 
   const loadPhases = async () => {
     if (!communityId) return;
@@ -139,6 +140,7 @@ export default function OwnersPage() {
       if (search) params.search = search;
       if (selectedPhase) params.phase_id = selectedPhase;
       if (selectedWechatStatus) params.wechat_status = selectedWechatStatus;
+      if (selectedHouseStatus) params.house_status = selectedHouseStatus;
 
       const response = await ownerApi.getAll(params);
       setOwners(response.data.data);
@@ -316,8 +318,8 @@ export default function OwnersPage() {
   };
 
   const columns = [
-    { key: 'phase_name', header: '期数', className: 'whitespace-nowrap' },
-    { key: 'room_number', header: '房间号', className: 'whitespace-nowrap' },
+    { key: 'phase_name', header: '期数', className: 'whitespace-nowrap min-w-16', sticky: true, stickyOffset: 0 },
+    { key: 'room_number', header: '房间号', className: 'whitespace-nowrap min-w-20', sticky: true, stickyOffset: 64 },
     {
       key: 'owner_name',
       header: '业主姓名',
@@ -508,43 +510,46 @@ export default function OwnersPage() {
   return (
     <div className="space-y-6">
       {/* 页面标题 */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <Users className="w-6 h-6 text-white" />
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3 md:gap-4">
+          <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+            <Users className="w-5 h-5 md:w-6 md:h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">业主管理</h1>
-            <p className="text-slate-500 mt-0.5">管理业主基本信息</p>
+            <h1 className="text-xl md:text-2xl font-bold text-slate-900">业主管理</h1>
+            <p className="text-slate-500 mt-0.5 text-sm md:text-base">管理业主基本信息</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 md:gap-3">
           <button
             onClick={() => setShowAddModal(true)}
             disabled={!communityId}
-            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl hover:from-purple-600 hover:to-purple-700 shadow-lg shadow-purple-500/20 transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 md:gap-2 px-3 md:px-5 py-2 md:py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl hover:from-purple-600 hover:to-purple-700 shadow-lg shadow-purple-500/20 transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base"
           >
             <Plus className="w-4 h-4" />
-            新增业主
+            <span className="hidden sm:inline">新增业主</span>
+            <span className="sm:hidden">新增</span>
           </button>
           <button
             onClick={handleExport}
             disabled={exporting || !communityId}
-            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 shadow-lg shadow-blue-500/20 transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 md:gap-2 px-3 md:px-5 py-2 md:py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 shadow-lg shadow-blue-500/20 transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base"
           >
             {exporting ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <Download className="w-4 h-4" />
             )}
-            导出 Excel
+            <span className="hidden sm:inline">导出 Excel</span>
+            <span className="sm:hidden">导出</span>
           </button>
           <button
             onClick={() => setShowImport(true)}
-            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 shadow-lg shadow-emerald-500/20 transition-all duration-200 font-medium"
+            className="flex items-center gap-1.5 md:gap-2 px-3 md:px-5 py-2 md:py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 shadow-lg shadow-emerald-500/20 transition-all duration-200 font-medium text-sm md:text-base"
           >
             <Upload className="w-4 h-4" />
-            导入 Excel
+            <span className="hidden sm:inline">导入 Excel</span>
+            <span className="sm:hidden">导入</span>
           </button>
         </div>
       </div>
@@ -571,7 +576,7 @@ export default function OwnersPage() {
           <select
             value={selectedPhase}
             onChange={(e) => setSelectedPhase(e.target.value ? parseInt(e.target.value) : '')}
-            className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer"
+            className="min-h-[44px] px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer text-base"
           >
             <option value="">全部期数</option>
             {phases.map((phase) => (
@@ -585,12 +590,27 @@ export default function OwnersPage() {
           <select
             value={selectedWechatStatus}
             onChange={(e) => setSelectedWechatStatus(e.target.value)}
-            className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer"
+            className="min-h-[44px] px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer text-base"
           >
             <option value="">全部微信状态</option>
             <option value="已加微信">已加微信</option>
             <option value="无法添加">无法添加</option>
             <option value="">未添加</option>
+          </select>
+
+          {/* 房屋状态筛选 */}
+          <select
+            value={selectedHouseStatus}
+            onChange={(e) => setSelectedHouseStatus(e.target.value)}
+            className="min-h-[44px] px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer text-base"
+          >
+            <option value="">全部房屋状态</option>
+            <option value="业主自住">业主自住</option>
+            <option value="个人租户">个人租户</option>
+            <option value="中介租户">中介租户</option>
+            <option value="业主亲友">业主亲友</option>
+            <option value="空置">空置</option>
+            <option value="已卖房">已卖房</option>
           </select>
 
           <button

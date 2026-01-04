@@ -17,6 +17,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { communityApi } from '@/lib/api';
 
+interface SidebarProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
 interface Community {
   id: number;
   name: string;
@@ -30,7 +35,7 @@ const menuItems = [
   { href: '/dashboard/settings', label: '系统设置', icon: Settings },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const [communities, setCommunities] = useState<Community[]>([]);
@@ -76,8 +81,24 @@ export default function Sidebar() {
     window.dispatchEvent(new CustomEvent('communityChanged', { detail: community }));
   };
 
+  // Handle link click on mobile - close sidebar
+  const handleLinkClick = () => {
+    if (onClose) {
+      onClose();
+    }
+  };
+
   return (
-    <div className="flex flex-col h-full w-64 bg-gradient-to-b from-slate-900 to-slate-800 text-white">
+    <div
+      className={cn(
+        'flex flex-col h-full w-64 bg-gradient-to-b from-slate-900 to-slate-800 text-white',
+        // Mobile styles: fixed position with slide animation
+        'fixed lg:static inset-y-0 left-0 z-50',
+        'transform transition-transform duration-300 ease-in-out',
+        // On mobile: slide in/out based on isOpen
+        isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      )}
+    >
       {/* Logo */}
       <div className="p-5 border-b border-slate-700/50">
         <div className="flex items-center gap-3">
@@ -151,6 +172,7 @@ export default function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={handleLinkClick}
               className={cn(
                 'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group',
                 isActive

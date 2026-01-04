@@ -9,6 +9,8 @@ interface Column<T> {
   header: string;
   render?: (item: T) => React.ReactNode;
   className?: string;
+  sticky?: boolean; // 是否固定列
+  stickyOffset?: number; // 固定列的左偏移量（用于多个固定列）
 }
 
 interface DataTableProps<T> {
@@ -43,6 +45,14 @@ export default function DataTable<T extends Record<string, any>>({
   const selected = selectedIds ?? localSelectedIds;
   const setSelected = onSelectChange ?? setLocalSelectedIds;
 
+  // 找到最后一个固定列的索引
+  const lastStickyIndex = columns.reduce((lastIdx, col, idx) =>
+    col.sticky ? idx : lastIdx, -1
+  );
+
+  // 复选框列宽度（px-4 * 2 + checkbox w-4 = 16 + 16 + 16 = 48px）
+  const checkboxColumnWidth = onSelectChange ? 48 : 0;
+
   const handleSelectAll = () => {
     if (selected.length === data.length) {
       setSelected([]);
@@ -66,7 +76,7 @@ export default function DataTable<T extends Record<string, any>>({
           <thead>
             <tr className="bg-gradient-to-r from-slate-50 to-slate-100/50 border-b border-slate-200/60">
               {onSelectChange && (
-                <th className="px-4 py-4 text-left w-12">
+                <th className="px-4 py-4 text-left w-12 sticky left-0 bg-gradient-to-r from-slate-50 to-slate-100/50" style={{ zIndex: 25 }}>
                   <input
                     type="checkbox"
                     checked={data.length > 0 && selected.length === data.length}
@@ -75,13 +85,19 @@ export default function DataTable<T extends Record<string, any>>({
                   />
                 </th>
               )}
-              {columns.map((column) => (
+              {columns.map((column, colIndex) => (
                 <th
                   key={column.key}
                   className={cn(
                     'px-4 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider',
+                    column.sticky && 'sticky bg-gradient-to-r from-slate-50 to-slate-100/50',
                     column.className
                   )}
+                  style={column.sticky ? {
+                    left: checkboxColumnWidth + (column.stickyOffset ?? 0),
+                    zIndex: 20 - colIndex,
+                    boxShadow: colIndex === lastStickyIndex ? '4px 0 6px -2px rgba(0, 0, 0, 0.1)' : undefined,
+                  } : undefined}
                 >
                   {column.header}
                 </th>
@@ -131,7 +147,14 @@ export default function DataTable<T extends Record<string, any>>({
                   onClick={() => onRowClick?.(item)}
                 >
                   {onSelectChange && (
-                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    <td
+                      className={cn(
+                        "px-4 py-3 sticky left-0",
+                        selected.includes(item[idKey]) ? 'bg-blue-50/50' : 'bg-white'
+                      )}
+                      style={{ zIndex: 15 }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <input
                         type="checkbox"
                         checked={selected.includes(item[idKey])}
@@ -140,10 +163,20 @@ export default function DataTable<T extends Record<string, any>>({
                       />
                     </td>
                   )}
-                  {columns.map((column) => (
+                  {columns.map((column, colIndex) => (
                     <td
                       key={column.key}
-                      className={cn('px-4 py-3 text-sm text-slate-700', column.className)}
+                      className={cn(
+                        'px-4 py-3 text-sm text-slate-700',
+                        column.sticky && 'sticky',
+                        column.sticky && (selected.includes(item[idKey]) ? 'bg-blue-50/50' : 'bg-white'),
+                        column.className
+                      )}
+                      style={column.sticky ? {
+                        left: checkboxColumnWidth + (column.stickyOffset ?? 0),
+                        zIndex: 10 - colIndex,
+                        boxShadow: colIndex === lastStickyIndex ? '4px 0 6px -2px rgba(0, 0, 0, 0.1)' : undefined,
+                      } : undefined}
                     >
                       {column.render
                         ? column.render(item)
