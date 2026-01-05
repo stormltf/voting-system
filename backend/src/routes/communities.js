@@ -4,7 +4,6 @@ const {
   authMiddleware,
   superAdminMiddleware,
   adminMiddleware,
-  ROLES,
   isSuperAdmin,
   canAccessCommunity,
   canManageCommunity
@@ -166,7 +165,7 @@ router.delete('/:id', authMiddleware, superAdminMiddleware, async (req, res) => 
       return res.status(404).json({ error: '小区不存在' });
     }
 
-    const [result] = await pool.query(
+    await pool.query(
       'DELETE FROM communities WHERE id = ?',
       [communityId]
     );

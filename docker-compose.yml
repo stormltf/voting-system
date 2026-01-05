@@ -31,10 +31,10 @@ services:
     container_name: voting-backend
     restart: unless-stopped
     ports:
-      - "3001:3001"
+      - "8081:8081"
     environment:
       NODE_ENV: production
-      PORT: 3001
+      PORT: 8081
       DB_HOST: mysql
       DB_PORT: 3306
       DB_USER: ${MYSQL_USER:-voting}
@@ -52,11 +52,11 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001/api}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8081/api}
     container_name: voting-frontend
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "8080:8080"
     environment:
       NODE_ENV: production
     depends_on:

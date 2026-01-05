@@ -10,14 +10,13 @@ const votesRoutes = require('./routes/votes');
 const logsRoutes = require('./routes/logs');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 8081;
 
 // CORS 配置
 const corsOptions = {
   origin: function (origin, callback) {
     // 允许的域名列表
     const allowedOrigins = [
-      'http://localhost:3000',
       'http://localhost:8080',
       'https://voting-frontend-n2p2.onrender.com',  // Render 前端
       process.env.FRONTEND_URL,  // 自定义前端 URL
@@ -73,7 +72,7 @@ app.use((req, res) => {
 });
 
 // 错误处理
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
   console.error('服务器错误:', err);
   res.status(500).json({ error: '服务器内部错误' });
 });

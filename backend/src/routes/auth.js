@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../models/db');
-const { authMiddleware, superAdminMiddleware, adminMiddleware, isSuperAdmin, generateToken, ROLES } = require('../middleware/auth');
+const { authMiddleware, adminMiddleware, isSuperAdmin, generateToken, ROLES } = require('../middleware/auth');
 const { createLogger, getClientInfo, logOperation, Actions, Modules } = require('../utils/logger');
 
 const router = express.Router();
@@ -201,17 +201,18 @@ router.post('/users', authMiddleware, adminMiddleware, async (req, res) => {
       }
     }
 
-    // 非超级管理员必须指定小区
+    // 确定最终的小区ID
+    let finalCommunityId;
     if (userRole !== ROLES.SUPER_ADMIN && !communityId) {
       // 如果是小区管理员创建用户，自动使用自己的小区
       if (!isSuperAdmin(req.user)) {
-        var finalCommunityId = req.user.communityId;
+        finalCommunityId = req.user.communityId;
       } else {
         return res.status(400).json({ error: '小区管理员和普通用户必须指定所属小区' });
       }
     } else {
       // 超级管理员不能指定小区
-      var finalCommunityId = userRole === ROLES.SUPER_ADMIN ? null : communityId;
+      finalCommunityId = userRole === ROLES.SUPER_ADMIN ? null : communityId;
     }
 
     // 验证小区是否存在

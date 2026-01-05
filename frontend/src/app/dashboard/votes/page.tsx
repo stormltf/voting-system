@@ -21,6 +21,8 @@ interface Round {
   total_votes: number;
 }
 
+type VoteStatus = 'pending' | 'voted' | 'refused' | 'onsite' | 'video';
+
 interface Vote {
   id: number;
   owner_id: number;
@@ -40,7 +42,7 @@ interface Vote {
   phase_name: string;
   community_name: string;
   round_name: string;
-  vote_status: string;
+  vote_status: VoteStatus;
   vote_phone: string;
   vote_date: string;
   remark: string;
@@ -119,38 +121,7 @@ export default function VotesPage() {
     };
   }, []);
 
-  // 当小区变化时，重新加载该小区的轮次
-  useEffect(() => {
-    if (communityId) {
-      loadRounds();
-    } else {
-      setRounds([]);
-    }
-  }, [communityId]);
-
-  useEffect(() => {
-    if (communityId) {
-      loadPhases();
-    }
-  }, [communityId]);
-
-  useEffect(() => {
-    // 默认选择进行中的轮次
-    if (rounds.length > 0 && !selectedRound) {
-      const activeRound = rounds.find((r) => r.status === 'active');
-      if (activeRound) {
-        setSelectedRound(activeRound.id);
-      }
-    }
-  }, [rounds]);
-
-  useEffect(() => {
-    if (activeTab === 'records' && selectedRound) {
-      loadVotes();
-    }
-  }, [activeTab, pagination.page, selectedRound, selectedStatus, selectedSweepStatus, selectedPhase, search, communityId]);
-
-  const loadPhases = async () => {
+  const loadPhases = useCallback(async () => {
     if (!communityId) return;
     try {
       const response = await communityApi.getPhases(communityId);
@@ -158,9 +129,9 @@ export default function VotesPage() {
     } catch (error) {
       console.error('加载期数失败:', error);
     }
-  };
+  }, [communityId]);
 
-  const loadRounds = async () => {
+  const loadRounds = useCallback(async () => {
     if (!communityId) {
       setRounds([]);
       return;
@@ -174,9 +145,9 @@ export default function VotesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [communityId]);
 
-  const loadVotes = async () => {
+  const loadVotes = useCallback(async () => {
     // 必须选择轮次和小区才能加载投票记录
     if (!selectedRound || !communityId) {
       setVotes([]);
@@ -186,11 +157,23 @@ export default function VotesPage() {
 
     try {
       setLoading(true);
-      const params: any = {
+      if (!selectedRound || typeof selectedRound !== 'number') {
+        setVotes([]);
+        setLoading(false);
+        return;
+      }
+      const params: {
+        page?: number;
+        limit?: number;
+        round_id: number;
+        phase_id?: number;
+        vote_status?: string;
+        sweep_status?: string;
+        search?: string;
+      } = {
         page: pagination.page,
         limit: pagination.limit,
         round_id: selectedRound,
-        community_id: communityId,  // 必传
       };
       if (selectedPhase) params.phase_id = selectedPhase;
       if (selectedStatus) params.vote_status = selectedStatus;
@@ -205,7 +188,33 @@ export default function VotesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedRound, communityId, pagination.page, pagination.limit, selectedPhase, selectedStatus, selectedSweepStatus, search]);
+
+  // 当小区变化时，重新加载该小区的轮次
+  useEffect(() => {
+    if (communityId) {
+      loadRounds();
+      loadPhases();
+    } else {
+      setRounds([]);
+    }
+  }, [communityId, loadRounds, loadPhases]);
+
+  useEffect(() => {
+    // 默认选择进行中的轮次
+    if (rounds.length > 0 && !selectedRound) {
+      const activeRound = rounds.find((r) => r.status === 'active');
+      if (activeRound) {
+        setSelectedRound(activeRound.id);
+      }
+    }
+  }, [rounds, selectedRound]);
+
+  useEffect(() => {
+    if (activeTab === 'records' && selectedRound) {
+      loadVotes();
+    }
+  }, [activeTab, selectedRound, loadVotes]);
 
   const handleSearch = useCallback(() => {
     setPagination((prev) => ({ ...prev, page: 1 }));
@@ -235,8 +244,9 @@ export default function VotesPage() {
         description: '',
       });
       loadRounds();
-    } catch (error: any) {
-      alert(error.response?.data?.error || '保存失败');
+    } catch (error) {
+      const err = error as { response?: { data?: { error?: string } } };
+      alert(err.response?.data?.error || '保存失败');
     }
   };
 
@@ -261,12 +271,13 @@ export default function VotesPage() {
     try {
       await voteApi.deleteRound(id);
       loadRounds();
-    } catch (error: any) {
-      alert(error.response?.data?.error || '删除失败');
+    } catch (error) {
+      const err = error as { response?: { data?: { error?: string } } };
+      alert(err.response?.data?.error || '删除失败');
     }
   };
 
-  const handleQuickStatusChange = async (vote: Vote, status: string) => {
+  const handleQuickStatusChange = async (vote: Vote, status: 'pending' | 'voted' | 'refused' | 'onsite' | 'video') => {
     if (!selectedRound) return;
     try {
       await voteApi.saveVote({
@@ -297,7 +308,7 @@ export default function VotesPage() {
   };
 
   const handleBatchStatusChange = async (status: string) => {
-    if (selectedIds.length === 0 || !selectedRound) {
+    if (selectedIds.length === 0 || !selectedRound || !communityId) {
       alert('请先选择业主');
       return;
     }
@@ -306,6 +317,7 @@ export default function VotesPage() {
         owner_ids: selectedIds,
         round_id: selectedRound as number,
         vote_status: status,
+        community_id: communityId,
       });
       setSelectedIds([]);
       loadVotes();
@@ -347,8 +359,9 @@ export default function VotesPage() {
       const response = await voteApi.initVotes(selectedRound as number, communityId);
       alert(`初始化完成！\n创建: ${response.data.created} 条\n跳过（已存在）: ${response.data.skipped} 条`);
       loadVotes();
-    } catch (error: any) {
-      alert(error.response?.data?.error || '初始化失败');
+    } catch (error) {
+      const err = error as { response?: { data?: { error?: string } } };
+      alert(err.response?.data?.error || '初始化失败');
     } finally {
       setInitializingVotes(false);
     }
@@ -364,9 +377,15 @@ export default function VotesPage() {
     setExporting(true);
 
     // 构建导出参数（与当前筛选条件一致）
-    const params: any = {
+    const params: {
+      round_id: number;
+      community_id?: number;
+      phase_id?: number;
+      vote_status?: string;
+      search?: string;
+    } = {
       round_id: selectedRound as number,
-      community_id: communityId,
+      community_id: communityId || undefined,
     };
     if (selectedPhase) params.phase_id = selectedPhase;
     if (selectedStatus) params.vote_status = selectedStatus;
@@ -432,8 +451,9 @@ export default function VotesPage() {
       setImportFile(null);
       setVoteColumn('');
       loadVotes();
-    } catch (error: any) {
-      alert(error.response?.data?.error || '导入失败');
+    } catch (error) {
+      const err = error as { response?: { data?: { error?: string } } };
+      alert(err.response?.data?.error || '导入失败');
     } finally {
       setImporting(false);
     }
@@ -540,7 +560,7 @@ export default function VotesPage() {
           value={item.vote_status || 'pending'}
           onChange={(e) => {
             e.stopPropagation();
-            handleQuickStatusChange(item, e.target.value);
+            handleQuickStatusChange(item, e.target.value as VoteStatus);
           }}
           onClick={(e) => e.stopPropagation()}
           className={cn(
@@ -857,9 +877,9 @@ export default function VotesPage() {
               <p className="text-slate-500">请先选择投票轮次</p>
             </div>
           ) : (
-            <DataTable
-              columns={voteColumns}
-              data={votes}
+            <DataTable<Vote & Record<string, unknown>>
+              columns={voteColumns as Parameters<typeof DataTable<Vote & Record<string, unknown>>>[0]['columns']}
+              data={votes as (Vote & Record<string, unknown>)[]}
               loading={loading}
               pagination={pagination}
               onPageChange={(page) => setPagination((prev) => ({ ...prev, page }))}
@@ -905,7 +925,11 @@ export default function VotesPage() {
                 </button>
               </div>
 
-              <DataTable columns={roundColumns} data={rounds} loading={loading} />
+              <DataTable<Round & Record<string, unknown>>
+                columns={roundColumns as Parameters<typeof DataTable<Round & Record<string, unknown>>>[0]['columns']}
+                data={rounds as (Round & Record<string, unknown>)[]}
+                loading={loading}
+              />
             </>
           )}
         </div>

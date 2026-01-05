@@ -22,8 +22,6 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 3001
       - key: DB_HOST
         sync: false  # 手动填入 TiDB Cloud 主机
       - key: DB_PORT

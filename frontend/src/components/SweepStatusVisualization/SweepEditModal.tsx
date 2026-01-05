@@ -29,8 +29,9 @@ export default function SweepEditModal({ room, roundId, onClose, onSaved }: Prop
       });
       onSaved();
       onClose();
-    } catch (err: any) {
-      setError(err.response?.data?.error || '保存失败');
+    } catch (err) {
+      const error = err as { response?: { data?: { error?: string } } };
+      setError(error.response?.data?.error || '保存失败');
     } finally {
       setSaving(false);
     }

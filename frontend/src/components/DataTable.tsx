@@ -30,7 +30,7 @@ interface DataTableProps<T> {
   idKey?: string;
 }
 
-export default function DataTable<T extends Record<string, any>>({
+export default function DataTable<T extends Record<string, unknown>>({
   columns,
   data,
   loading,
@@ -57,7 +57,7 @@ export default function DataTable<T extends Record<string, any>>({
     if (selected.length === data.length) {
       setSelected([]);
     } else {
-      setSelected(data.map((item) => item[idKey]));
+      setSelected(data.map((item) => item[idKey] as number));
     }
   };
 
@@ -136,11 +136,11 @@ export default function DataTable<T extends Record<string, any>>({
             ) : (
               data.map((item, index) => (
                 <tr
-                  key={item[idKey] || index}
+                  key={(item[idKey] as React.Key) || index}
                   className={cn(
                     'transition-colors duration-150',
                     onRowClick && 'cursor-pointer',
-                    selected.includes(item[idKey])
+                    selected.includes(item[idKey] as number)
                       ? 'bg-blue-50/50'
                       : 'hover:bg-slate-50/80'
                   )}
@@ -150,15 +150,15 @@ export default function DataTable<T extends Record<string, any>>({
                     <td
                       className={cn(
                         "px-4 py-3 sticky left-0",
-                        selected.includes(item[idKey]) ? 'bg-blue-50/50' : 'bg-white'
+                        selected.includes(item[idKey] as number) ? 'bg-blue-50/50' : 'bg-white'
                       )}
                       style={{ zIndex: 15 }}
                       onClick={(e) => e.stopPropagation()}
                     >
                       <input
                         type="checkbox"
-                        checked={selected.includes(item[idKey])}
-                        onChange={() => handleSelectOne(item[idKey])}
+                        checked={selected.includes(item[idKey] as number)}
+                        onChange={() => handleSelectOne(item[idKey] as number)}
                         className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 transition-colors cursor-pointer"
                       />
                     </td>
@@ -169,7 +169,7 @@ export default function DataTable<T extends Record<string, any>>({
                       className={cn(
                         'px-4 py-3 text-sm text-slate-700',
                         column.sticky && 'sticky',
-                        column.sticky && (selected.includes(item[idKey]) ? 'bg-blue-50/50' : 'bg-white'),
+                        column.sticky && (selected.includes(item[idKey] as number) ? 'bg-blue-50/50' : 'bg-white'),
                         column.className
                       )}
                       style={column.sticky ? {
@@ -180,7 +180,7 @@ export default function DataTable<T extends Record<string, any>>({
                     >
                       {column.render
                         ? column.render(item)
-                        : item[column.key] ?? <span className="text-slate-400">-</span>}
+                        : (item[column.key] as React.ReactNode) ?? <span className="text-slate-400">-</span>}
                     </td>
                   ))}
                 </tr>

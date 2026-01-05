@@ -12,8 +12,10 @@ interface Props {
   onSaved: () => void;
 }
 
+type VoteStatus = 'pending' | 'voted' | 'refused' | 'onsite' | 'video';
+
 export default function RoomEditModal({ room, roundId, onClose, onSaved }: Props) {
-  const [voteStatus, setVoteStatus] = useState(room.vote_status || 'pending');
+  const [voteStatus, setVoteStatus] = useState<VoteStatus>((room.vote_status as VoteStatus) || 'pending');
   const [remark, setRemark] = useState(room.remark || '');
   const [sweepStatus, setSweepStatus] = useState(room.sweep_status || 'pending');
   const [saving, setSaving] = useState(false);
@@ -26,8 +28,8 @@ export default function RoomEditModal({ room, roundId, onClose, onSaved }: Props
         round_id: roundId,
         vote_status: voteStatus,
         vote_date: new Date().toISOString().split('T')[0],
-        remark: remark || null,
-        sweep_status: sweepStatus || null,
+        remark: remark || undefined,
+        sweep_status: sweepStatus || undefined,
       });
       onSaved();
       onClose();
@@ -80,7 +82,7 @@ export default function RoomEditModal({ room, roundId, onClose, onSaved }: Props
               {statusOptions.map(([key, value]) => (
                 <button
                   key={key}
-                  onClick={() => setVoteStatus(key)}
+                  onClick={() => setVoteStatus(key as VoteStatus)}
                   className={`
                     px-3 py-2 rounded-lg text-sm font-medium transition-all
                     ${voteStatus === key

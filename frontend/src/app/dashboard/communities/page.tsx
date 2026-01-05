@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Plus, Edit, Trash2, X, Building, ChevronRight, Building2, Layers, Loader2, MapPin } from 'lucide-react';
 import { communityApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -47,39 +47,39 @@ export default function CommunitiesPage() {
     description: '',
   });
 
-  useEffect(() => {
-    loadCommunities();
-  }, []);
-
-  useEffect(() => {
-    if (selectedCommunity) {
-      loadPhases(selectedCommunity.id);
-    }
-  }, [selectedCommunity]);
-
-  const loadCommunities = async () => {
+  const loadCommunities = useCallback(async () => {
     try {
       setLoading(true);
       const response = await communityApi.getAll();
       setCommunities(response.data);
-      if (response.data.length > 0 && !selectedCommunity) {
-        setSelectedCommunity(response.data[0]);
+      if (response.data.length > 0) {
+        setSelectedCommunity(prev => prev || response.data[0]);
       }
     } catch (error) {
       console.error('加载小区列表失败:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const loadPhases = async (communityId: number) => {
+  const loadPhases = useCallback(async (communityId: number) => {
     try {
       const response = await communityApi.getPhases(communityId);
       setPhases(response.data);
     } catch (error) {
       console.error('加载期数列表失败:', error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadCommunities();
+  }, [loadCommunities]);
+
+  useEffect(() => {
+    if (selectedCommunity) {
+      loadPhases(selectedCommunity.id);
+    }
+  }, [selectedCommunity, loadPhases]);
 
   // 小区操作
   const handleSaveCommunity = async () => {
@@ -93,8 +93,9 @@ export default function CommunitiesPage() {
       setEditingCommunity(null);
       setCommunityForm({ name: '', address: '', description: '' });
       loadCommunities();
-    } catch (error: any) {
-      alert(error.response?.data?.error || '保存失败');
+    } catch (error) {
+      const err = error as { response?: { data?: { error?: string } } };
+      alert(err.response?.data?.error || '保存失败');
     }
   };
 
@@ -119,8 +120,9 @@ export default function CommunitiesPage() {
         setPhases([]);
       }
       loadCommunities();
-    } catch (error: any) {
-      alert(error.response?.data?.error || '删除失败');
+    } catch (error) {
+      const err = error as { response?: { data?: { error?: string } } };
+      alert(err.response?.data?.error || '删除失败');
     }
   };
 
@@ -138,8 +140,9 @@ export default function CommunitiesPage() {
       setPhaseForm({ name: '', code: '', description: '' });
       loadPhases(selectedCommunity.id);
       loadCommunities();
-    } catch (error: any) {
-      alert(error.response?.data?.error || '保存失败');
+    } catch (error) {
+      const err = error as { response?: { data?: { error?: string } } };
+      alert(err.response?.data?.error || '保存失败');
     }
   };
 
@@ -162,8 +165,9 @@ export default function CommunitiesPage() {
       await communityApi.deletePhase(id);
       loadPhases(selectedCommunity.id);
       loadCommunities();
-    } catch (error: any) {
-      alert(error.response?.data?.error || '删除失败');
+    } catch (error) {
+      const err = error as { response?: { data?: { error?: string } } };
+      alert(err.response?.data?.error || '删除失败');
     }
   };
 

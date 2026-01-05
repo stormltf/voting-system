@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Users, Home, Vote, TrendingUp, Building, Loader2, BarChart3 } from 'lucide-react';
 import StatsCard from '@/components/StatsCard';
 import BuildingVoteVisualization from '@/components/BuildingVoteVisualization';
@@ -63,13 +63,7 @@ export default function DashboardPage() {
     };
   }, []);
 
-  useEffect(() => {
-    if (initialized) {
-      loadData();
-    }
-  }, [communityId, initialized, refreshKey]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       const params = communityId ? { community_id: communityId } : {};
@@ -90,7 +84,13 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [communityId]);
+
+  useEffect(() => {
+    if (initialized) {
+      loadData();
+    }
+  }, [communityId, initialized, refreshKey, loadData]);
 
   const activeRound = progress.find((r) => r.status === 'active');
 

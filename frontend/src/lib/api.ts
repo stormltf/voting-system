@@ -1,6 +1,102 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081/api';
+
+// 类型定义
+export interface Community {
+  id: number;
+  name: string;
+  address?: string;
+  description?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Phase {
+  id: number;
+  community_id: number;
+  name: string;
+  code: string;
+  description?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Owner {
+  id: number;
+  phase_id: number;
+  seq_no?: number;
+  building?: string;
+  unit?: string;
+  room?: string;
+  room_number: string;
+  owner_name?: string;
+  area?: number;
+  parking_no?: string;
+  parking_area?: number;
+  phone1?: string;
+  phone2?: string;
+  phone3?: string;
+  wechat_status?: string;
+  wechat_contact?: string;
+  house_status?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface VoteRound {
+  id: number;
+  community_id: number;
+  name: string;
+  year: number;
+  round_code?: string;
+  start_date?: string;
+  end_date?: string;
+  status?: 'draft' | 'active' | 'closed';
+  description?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Vote {
+  id: number;
+  owner_id: number;
+  round_id: number;
+  vote_status: 'pending' | 'voted' | 'refused' | 'onsite' | 'video';
+  vote_phone?: string;
+  vote_date?: string;
+  remark?: string;
+  sweep_status: string;
+  sweep_remark?: string;
+  sweep_date?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface User {
+  id: number;
+  username: string;
+  name?: string;
+  role: 'super_admin' | 'community_admin' | 'community_user';
+  community_id?: number | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface OperationLog {
+  id: number;
+  user_id?: number;
+  username?: string;
+  action: string;
+  module: string;
+  target_type?: string;
+  target_id?: number;
+  target_name?: string;
+  details?: string;
+  ip_address?: string;
+  user_agent?: string;
+  created_at?: string;
+}
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -55,23 +151,32 @@ export const authApi = {
 export const communityApi = {
   getAll: () => api.get('/communities'),
   getOne: (id: number) => api.get(`/communities/${id}`),
-  create: (data: any) => api.post('/communities', data),
-  update: (id: number, data: any) => api.put(`/communities/${id}`, data),
+  create: (data: Omit<Community, 'id' | 'created_at' | 'updated_at'>) => api.post('/communities', data),
+  update: (id: number, data: Partial<Community>) => api.put(`/communities/${id}`, data),
   delete: (id: number) => api.delete(`/communities/${id}`),
   // 期数
   getPhases: (communityId: number) => api.get(`/communities/${communityId}/phases`),
-  createPhase: (communityId: number, data: any) =>
+  createPhase: (communityId: number, data: { name: string; code: string; description?: string }) =>
     api.post(`/communities/${communityId}/phases`, data),
-  updatePhase: (id: number, data: any) => api.put(`/communities/phases/${id}`, data),
+  updatePhase: (id: number, data: Partial<Phase>) => api.put(`/communities/phases/${id}`, data),
   deletePhase: (id: number) => api.delete(`/communities/phases/${id}`),
 };
 
 // 业主 API
 export const ownerApi = {
-  getAll: (params?: any) => api.get('/owners', { params }),
+  getAll: (params?: {
+    phase_id?: number;
+    community_id?: number;
+    building?: string;
+    search?: string;
+    round_id?: number;
+    vote_status?: string;
+    page?: number;
+    limit?: number;
+  }) => api.get('/owners', { params }),
   getOne: (id: number) => api.get(`/owners/${id}`),
-  create: (data: any) => api.post('/owners', data),
-  update: (id: number, data: any) => api.put(`/owners/${id}`, data),
+  create: (data: Omit<Owner, 'id' | 'created_at' | 'updated_at'>) => api.post('/owners', data),
+  update: (id: number, data: Partial<Owner>) => api.put(`/owners/${id}`, data),
   delete: (id: number) => api.delete(`/owners/${id}`),
   import: (file: File, phaseId: number) => {
     const formData = new FormData();
@@ -109,13 +214,22 @@ export const voteApi = {
   // 轮次
   getRounds: (params?: { community_id?: number }) => api.get('/votes/rounds', { params }),
   getRound: (id: number) => api.get(`/votes/rounds/${id}`),
-  createRound: (data: any) => api.post('/votes/rounds', data),
-  updateRound: (id: number, data: any) => api.put(`/votes/rounds/${id}`, data),
+  createRound: (data: Omit<VoteRound, 'id' | 'created_at' | 'updated_at'>) =>
+    api.post('/votes/rounds', data),
+  updateRound: (id: number, data: Partial<VoteRound>) => api.put(`/votes/rounds/${id}`, data),
   deleteRound: (id: number) => api.delete(`/votes/rounds/${id}`),
   // 投票记录
-  getVotes: (params?: any) => api.get('/votes', { params }),
-  saveVote: (data: any) => api.post('/votes', data),
-  batchUpdate: (data: any) => api.put('/votes/batch', data),
+  getVotes: (params?: {
+    round_id: number;
+    phase_id?: number;
+    building?: string;
+    unit?: string;
+    vote_status?: string;
+    search?: string;
+  }) => api.get('/votes', { params }),
+  saveVote: (data: Partial<Vote>) => api.post('/votes', data),
+  batchUpdate: (data: { owner_ids: number[]; vote_status: string; round_id: number; community_id: number }) =>
+    api.put('/votes/batch', data),
   // 初始化和导入
   initVotes: (roundId: number, communityId: number) =>
     api.post('/votes/init', { round_id: roundId, community_id: communityId }),
@@ -130,8 +244,15 @@ export const voteApi = {
     });
   },
   // 统计
-  getStats: (params?: any) => api.get('/votes/stats', { params }),
-  getProgress: (params?: any) => api.get('/votes/progress', { params }),
+  getStats: (params?: {
+    community_id?: number;
+    round_id?: number;
+    phase_id?: number;
+  }) => api.get('/votes/stats', { params }),
+  getProgress: (params?: {
+    community_id?: number;
+    round_id?: number;
+  }) => api.get('/votes/progress', { params }),
   // 楼栋可视化
   getUnitRooms: (params: { round_id: number; phase_id: number; building: string; unit: string }) =>
     api.get('/votes/unit-rooms', { params }),

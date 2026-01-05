@@ -94,7 +94,7 @@ DB_PASSWORD=your_password
 DB_NAME=voting_system
 JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
 JWT_EXPIRES_IN=7d
-PORT=3001
+PORT=8081
 ```
 
 ```bash
@@ -108,7 +108,7 @@ npm run dev
 npm start
 ```
 
-后端服务运行在 http://localhost:3001
+后端服务运行在 http://localhost:8081
 
 ### 3. 前端配置
 
@@ -122,11 +122,11 @@ npm install
 npm run dev
 ```
 
-前端服务运行在 http://localhost:3000
+前端服务运行在 http://localhost:8080
 
 （可选）创建 `.env.local` 文件配置 API 地址：
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:3001/api
+NEXT_PUBLIC_API_URL=http://localhost:8081/api
 ```
 
 ### 4. 登录系统
@@ -152,8 +152,10 @@ voting-system/
 │   │   │   └── logs.js        # 操作日志
 │   │   ├── middleware/        # 中间件
 │   │   │   └── auth.js        # JWT 验证
-│   │   └── models/            # 数据库模型
-│   │       └── db.js          # 数据库连接池
+│   │   ├── models/            # 数据库模型
+│   │   │   └── db.js          # 数据库连接池
+│   │   └── utils/             # 工具函数
+│   │       └── logger.js      # 操作日志记录
 │   ├── tests/                 # 后端测试
 │   ├── package.json
 │   ├── jest.config.js
@@ -711,8 +713,8 @@ docker-compose logs -f
 ```
 
 启动后访问：
-- 前端：http://localhost:3000
-- 后端 API：http://localhost:3001
+- 前端：http://localhost:8080
+- 后端 API：http://localhost:8081
 - 默认账号：admin / admin123
 
 ### 常用命令
@@ -753,7 +755,7 @@ MYSQL_PASSWORD=your_password
 JWT_SECRET=your-random-secret-key-at-least-32-chars
 
 # 前端 API 地址（服务器部署时修改为服务器 IP）
-NEXT_PUBLIC_API_URL=http://your-server-ip:3001/api
+NEXT_PUBLIC_API_URL=http://your-server-ip:8081/api
 ```
 
 ### 服务器部署
@@ -780,8 +782,8 @@ docker-compose up -d
 | 服务 | 镜像 | 端口 | 说明 |
 |------|------|------|------|
 | mysql | mysql:8.0 | 3306 | MySQL 数据库 |
-| backend | 自构建 | 3001 | Node.js API 服务 |
-| frontend | 自构建 | 3000 | Next.js 前端服务 |
+| backend | 自构建 | 8081 | Node.js API 服务 |
+| frontend | 自构建 | 8080 | Next.js 前端服务 |
 
 ---
 
@@ -857,7 +859,7 @@ services:
   backend:
     image: ghcr.io/stormltf/voting-system/backend:latest
     ports:
-      - "3001:3001"
+      - "8081:8081"
     environment:
       DB_HOST: mysql
       DB_USER: root
@@ -870,7 +872,7 @@ services:
   frontend:
     image: ghcr.io/stormltf/voting-system/frontend:latest
     ports:
-      - "3000:3000"
+      - "8080:8080"
     depends_on:
       - backend
 

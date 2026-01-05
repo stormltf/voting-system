@@ -203,5 +203,40 @@ describe('Logs Routes', () => {
       expect(response.body.modules).toEqual(['owner', 'vote']);
       expect(response.body.users).toHaveLength(2);
     });
+
+    it('应该处理服务器错误', async () => {
+      pool.query.mockRejectedValueOnce(new Error('Database error'));
+
+      const response = await request(app)
+        .get('/api/logs/filters')
+        .set('Authorization', `Bearer ${superAdminToken}`);
+
+      expect(response.status).toBe(500);
+      expect(response.body.error).toBe('服务器错误');
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('GET /api/logs 应该处理服务器错误', async () => {
+      pool.query.mockRejectedValueOnce(new Error('Database error'));
+
+      const response = await request(app)
+        .get('/api/logs')
+        .set('Authorization', `Bearer ${superAdminToken}`);
+
+      expect(response.status).toBe(500);
+      expect(response.body.error).toBe('服务器错误');
+    });
+
+    it('GET /api/logs/stats 应该处理服务器错误', async () => {
+      pool.query.mockRejectedValueOnce(new Error('Database error'));
+
+      const response = await request(app)
+        .get('/api/logs/stats')
+        .set('Authorization', `Bearer ${superAdminToken}`);
+
+      expect(response.status).toBe(500);
+      expect(response.body.error).toBe('服务器错误');
+    });
   });
 });

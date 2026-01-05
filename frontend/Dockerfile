@@ -14,7 +14,7 @@ RUN npm ci
 COPY . .
 
 # 构建参数 - API 地址
-ARG NEXT_PUBLIC_API_URL=http://localhost:3001/api
+ARG NEXT_PUBLIC_API_URL=http://localhost:8081/api
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 # 构建
@@ -34,7 +34,7 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/node_modules ./node_modules
 
 # 暴露端口
-EXPOSE 3000
+EXPOSE 8080
 
 # 启动命令
 CMD ["npm", "start"]

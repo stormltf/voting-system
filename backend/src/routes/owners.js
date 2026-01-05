@@ -5,7 +5,6 @@ const { pool } = require('../models/db');
 const {
   authMiddleware,
   adminMiddleware,
-  ROLES,
   isSuperAdmin,
   canAccessCommunity,
   canManageCommunity

@@ -181,7 +181,7 @@ export default function BuildingVoteVisualization({ communityId }: Props) {
 
   // 批量更新投票状态
   const handleBatchUpdateVote = async (status: string) => {
-    if (selectedRooms.size === 0 || !overviewData?.round) return;
+    if (selectedRooms.size === 0 || !overviewData?.round || !communityId) return;
 
     try {
       setBatchUpdating(true);
@@ -189,6 +189,7 @@ export default function BuildingVoteVisualization({ communityId }: Props) {
         round_id: overviewData.round.id,
         owner_ids: Array.from(selectedRooms),
         vote_status: status,
+        community_id: communityId,
       });
       // 同时刷新单元详情和楼栋概览数据
       await Promise.all([

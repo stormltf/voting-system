@@ -56,7 +56,12 @@ export default function OwnersPage() {
   const [importPhaseId, setImportPhaseId] = useState<number | ''>('');
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<any>(null);
+  const [importResult, setImportResult] = useState<{
+    success: boolean;
+    message: string;
+    imported?: number;
+    errors?: string[];
+  } | null>(null);
 
   // 编辑状态
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -102,17 +107,7 @@ export default function OwnersPage() {
     };
   }, []);
 
-  useEffect(() => {
-    if (communityId) {
-      loadPhases();
-    }
-  }, [communityId]);
-
-  useEffect(() => {
-    loadOwners();
-  }, [pagination.page, search, selectedPhase, selectedWechatStatus, selectedHouseStatus, communityId]);
-
-  const loadPhases = async () => {
+  const loadPhases = useCallback(async () => {
     if (!communityId) return;
     try {
       const response = await communityApi.getPhases(communityId);
@@ -120,9 +115,9 @@ export default function OwnersPage() {
     } catch (error) {
       console.error('加载期数失败:', error);
     }
-  };
+  }, [communityId]);
 
-  const loadOwners = async () => {
+  const loadOwners = useCallback(async () => {
     // 必须选择小区才能加载业主
     if (!communityId) {
       setOwners([]);
@@ -132,10 +127,18 @@ export default function OwnersPage() {
 
     try {
       setLoading(true);
-      const params: any = {
+      const params: {
+        page: number;
+        limit: number;
+        community_id?: number;
+        search?: string;
+        phase_id?: number;
+        wechat_status?: string;
+        house_status?: string;
+      } = {
         page: pagination.page,
         limit: pagination.limit,
-        community_id: communityId,  // 必传
+        community_id: communityId || undefined,
       };
       if (search) params.search = search;
       if (selectedPhase) params.phase_id = selectedPhase;
@@ -150,7 +153,17 @@ export default function OwnersPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [communityId, pagination.page, pagination.limit, search, selectedPhase, selectedWechatStatus, selectedHouseStatus]);
+
+  useEffect(() => {
+    if (communityId) {
+      loadPhases();
+    }
+  }, [communityId, loadPhases]);
+
+  useEffect(() => {
+    loadOwners();
+  }, [pagination.page, search, selectedPhase, selectedWechatStatus, communityId, loadOwners]);
 
   const handleSearch = useCallback(() => {
     setPagination((prev) => ({ ...prev, page: 1 }));
@@ -165,7 +178,12 @@ export default function OwnersPage() {
     setExporting(true);
 
     // 构建导出参数（与当前筛选条件一致）
-    const params: any = { community_id: communityId };
+    const params: {
+      community_id?: number;
+      phase_id?: number;
+      search?: string;
+      wechat_status?: string;
+    } = { community_id: communityId || undefined };
     if (selectedPhase) params.phase_id = selectedPhase;
     if (search) params.search = search;
     if (selectedWechatStatus) params.wechat_status = selectedWechatStatus;
@@ -218,8 +236,9 @@ export default function OwnersPage() {
       const response = await ownerApi.import(importFile, importPhaseId as number);
       setImportResult(response.data);
       loadOwners();
-    } catch (error: any) {
-      alert(error.response?.data?.error || '导入失败');
+    } catch (error) {
+      const err = error as { response?: { data?: { error?: string } } };
+      alert(err.response?.data?.error || '导入失败');
     } finally {
       setImporting(false);
     }
@@ -249,7 +268,15 @@ export default function OwnersPage() {
   const handleSaveEdit = async () => {
     if (!editingId) return;
     try {
-      await ownerApi.update(editingId, editForm);
+      // 转换类型，确保 area 是数字类型
+      const updateData: Record<string, unknown> = { ...editForm };
+      if (typeof updateData.area === 'string') {
+        updateData.area = parseFloat(updateData.area) || undefined;
+      }
+      if (typeof updateData.parking_area === 'string') {
+        updateData.parking_area = parseFloat(updateData.parking_area) || undefined;
+      }
+      await ownerApi.update(editingId, updateData as Parameters<typeof ownerApi.update>[1]);
       setEditingId(null);
       setEditForm({});
       loadOwners();
@@ -280,16 +307,16 @@ export default function OwnersPage() {
         unit: addForm.unit,
         room: addForm.room,
         room_number: roomNumber,
-        owner_name: addForm.owner_name || null,
-        area: addForm.area ? parseFloat(addForm.area) : null,
-        parking_no: addForm.parking_no || null,
-        parking_area: addForm.parking_area ? parseFloat(addForm.parking_area) : null,
-        phone1: addForm.phone1 || null,
-        phone2: addForm.phone2 || null,
-        phone3: addForm.phone3 || null,
+        owner_name: addForm.owner_name || undefined,
+        area: addForm.area ? parseFloat(addForm.area) : undefined,
+        parking_no: addForm.parking_no || undefined,
+        parking_area: addForm.parking_area ? parseFloat(addForm.parking_area) : undefined,
+        phone1: addForm.phone1 || undefined,
+        phone2: addForm.phone2 || undefined,
+        phone3: addForm.phone3 || undefined,
         wechat_status: addForm.wechat_status || '',
-        wechat_contact: addForm.wechat_contact || null,
-        house_status: addForm.house_status || null,
+        wechat_contact: addForm.wechat_contact || undefined,
+        house_status: addForm.house_status || undefined,
       });
       setShowAddModal(false);
       setAddPhaseId('');
@@ -309,9 +336,10 @@ export default function OwnersPage() {
         house_status: '',
       });
       loadOwners();
-    } catch (error: any) {
+    } catch (error) {
+      const err = error as { response?: { data?: { error?: string } } };
       console.error('新增失败:', error);
-      alert(error.response?.data?.error || '新增失败');
+      alert(err.response?.data?.error || '新增失败');
     } finally {
       setAdding(false);
     }
@@ -623,9 +651,9 @@ export default function OwnersPage() {
       </div>
 
       {/* 数据表格 */}
-      <DataTable
-        columns={columns}
-        data={owners}
+      <DataTable<Owner & Record<string, unknown>>
+        columns={columns as Parameters<typeof DataTable<Owner & Record<string, unknown>>>[0]['columns']}
+        data={owners as (Owner & Record<string, unknown>)[]}
         loading={loading}
         pagination={pagination}
         onPageChange={(page) => setPagination((prev) => ({ ...prev, page }))}
@@ -732,11 +760,11 @@ export default function OwnersPage() {
                       <p className="font-medium text-emerald-800">{importResult.message}</p>
                     </div>
                   </div>
-                  {importResult.errors?.length > 0 && (
+                  {(importResult.errors?.length ?? 0) > 0 && (
                     <div className="p-4 bg-red-50 border border-red-100 rounded-xl">
                       <p className="font-medium text-red-800 mb-2">部分数据导入失败：</p>
                       <ul className="text-sm text-red-700 list-disc pl-4 space-y-1">
-                        {importResult.errors.map((err: string, i: number) => (
+                        {importResult.errors?.map((err: string, i: number) => (
                           <li key={i}>{err}</li>
                         ))}
                       </ul>

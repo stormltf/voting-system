@@ -11,20 +11,22 @@ import {
   LogOut,
   ChevronDown,
   Check,
+  Menu,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { communityApi } from '@/lib/api';
 
-interface SidebarProps {
-  isOpen?: boolean;
-  onClose?: () => void;
-}
-
 interface Community {
   id: number;
   name: string;
+}
+
+interface SidebarProps {
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 const menuItems = [
@@ -43,6 +45,10 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  const closeSidebar = useCallback(() => {
+    onClose?.();
+  }, [onClose]);
+
   // 点击外部关闭下拉菜单
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -54,25 +60,24 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const loadCommunities = useCallback(async () => {
-    try {
-      const response = await communityApi.getAll();
-      setCommunities(response.data);
-      const savedId = localStorage.getItem('selectedCommunityId');
-      if (savedId && response.data.length > 0) {
-        const found = response.data.find((c: Community) => c.id === parseInt(savedId));
-        setSelectedCommunity(found || response.data[0]);
-      } else if (response.data.length > 0) {
-        setSelectedCommunity(response.data[0]);
-      }
-    } catch (error) {
-      console.error('加载小区列表失败:', error);
-    }
-  }, []);
-
   useEffect(() => {
+    const loadCommunities = async () => {
+      try {
+        const response = await communityApi.getAll();
+        setCommunities(response.data);
+        const savedId = localStorage.getItem('selectedCommunityId');
+        if (savedId && response.data.length > 0) {
+          const found = response.data.find((c: Community) => c.id === parseInt(savedId));
+          setSelectedCommunity(found || response.data[0]);
+        } else if (response.data.length > 0) {
+          setSelectedCommunity(response.data[0]);
+        }
+      } catch (error) {
+        console.error('加载小区列表失败:', error);
+      }
+    };
     loadCommunities();
-  }, [loadCommunities]);
+  }, []);
 
   const handleSelectCommunity = (community: Community) => {
     setSelectedCommunity(community);
@@ -83,9 +88,7 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
 
   // Handle link click on mobile - close sidebar
   const handleLinkClick = () => {
-    if (onClose) {
-      onClose();
-    }
+    closeSidebar();
   };
 
   return (
@@ -105,10 +108,18 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
             <Vote className="w-5 h-5 text-white" />
           </div>
-          <div>
+          <div className="flex-1">
             <h1 className="text-lg font-bold tracking-tight">投票管理系统</h1>
             <p className="text-xs text-slate-400">业主大会投票</p>
           </div>
+          {/* Mobile close button */}
+          <button
+            className="lg:hidden p-2 hover:bg-slate-700/50 rounded-lg transition-colors"
+            onClick={closeSidebar}
+            aria-label="关闭菜单"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
       </div>
 
@@ -199,7 +210,7 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
           <div className="flex-1 min-w-0">
             <p className="font-medium truncate">{user?.name || user?.username}</p>
             <p className="text-xs text-slate-400">
-              {user?.role === 'admin' ? '管理员' : '普通用户'}
+              {user?.role === 'super_admin' ? '超级管理员' : user?.role === 'community_admin' ? '小区管理员' : '普通用户'}
             </p>
           </div>
           <button
@@ -212,5 +223,18 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
         </div>
       </div>
     </div>
+  );
+}
+
+// Mobile menu toggle button component for use in layout
+export function MobileMenuButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      className="lg:hidden p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-200 rounded-lg transition-colors"
+      onClick={onClick}
+      aria-label="打开菜单"
+    >
+      <Menu className="w-6 h-6" />
+    </button>
   );
 }

@@ -5,7 +5,6 @@ const { pool } = require('../models/db');
 const {
   authMiddleware,
   adminMiddleware,
-  ROLES,
   isSuperAdmin,
   canAccessCommunity,
   canManageCommunity
@@ -388,7 +387,7 @@ router.put('/batch', authMiddleware, adminMiddleware, async (req, res) => {
     const values = owner_ids.map(id => [id, round_id, targetStatus, targetDate]);
 
     // Use bulk insert + update syntax
-    const [result] = await pool.query(`
+    await pool.query(`
       INSERT INTO votes (owner_id, round_id, vote_status, vote_date)
       VALUES ?
       ON DUPLICATE KEY UPDATE

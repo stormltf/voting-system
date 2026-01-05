@@ -3,8 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import Sidebar from '@/components/Sidebar';
-import MobileNav, { MobileOverlay } from '@/components/MobileNav';
+import Sidebar, { MobileMenuButton } from '@/components/Sidebar';
 
 export default function DashboardLayout({
   children,
@@ -53,17 +52,13 @@ export default function DashboardLayout({
 
   return (
     <div className="flex h-screen bg-slate-100">
-      {/* Mobile navigation header */}
-      <MobileNav
-        isOpen={sidebarOpen}
-        onToggle={() => setSidebarOpen(!sidebarOpen)}
-      />
-
       {/* Mobile overlay */}
-      <MobileOverlay
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-      />
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
 
       {/* Sidebar */}
       <Sidebar
@@ -72,7 +67,14 @@ export default function DashboardLayout({
       />
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto pt-14 lg:pt-0">
+      <main className="flex-1 overflow-auto">
+        {/* Mobile header with menu button */}
+        <div className="lg:hidden sticky top-0 z-30 bg-white border-b border-slate-200 px-4 py-3 flex items-center gap-3">
+          <MobileMenuButton onClick={() => setSidebarOpen(true)} />
+          <h1 className="font-semibold text-slate-800">投票管理系统</h1>
+        </div>
+
+        {/* Page content */}
         <div className="p-4 lg:p-6">{children}</div>
       </main>
     </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { authApi, logsApi, communityApi } from '@/lib/api';
 import {
@@ -47,7 +47,7 @@ interface OperationLog {
   created_at: string;
 }
 
-const ACTION_LABELS: Record<string, { label: string; icon: any; color: string }> = {
+const ACTION_LABELS: Record<string, { label: string; icon: React.ComponentType<{ className?: string }>; color: string }> = {
   login: { label: '登录', icon: LogIn, color: 'bg-green-100 text-green-700' },
   logout: { label: '登出', icon: LogIn, color: 'bg-slate-100 text-slate-700' },
   change_password: { label: '修改密码', icon: Lock, color: 'bg-amber-100 text-amber-700' },
@@ -123,20 +123,7 @@ export default function SettingsPage() {
   const isSuperAdmin = user?.role === 'super_admin';
   const isAdmin = user?.role === 'super_admin' || user?.role === 'community_admin';
 
-  useEffect(() => {
-    if (activeTab === 'users' && isAdmin) {
-      loadUsers();
-      if (isSuperAdmin) {
-        loadCommunities();
-      }
-    }
-    if (activeTab === 'logs' && isSuperAdmin) {
-      loadLogs();
-      loadFilterOptions();
-    }
-  }, [activeTab, user]);
-
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     try {
       setUsersLoading(true);
       const response = await authApi.getUsers();
@@ -146,18 +133,18 @@ export default function SettingsPage() {
     } finally {
       setUsersLoading(false);
     }
-  };
+  }, []);
 
-  const loadCommunities = async () => {
+  const loadCommunities = useCallback(async () => {
     try {
       const response = await communityApi.getAll();
       setCommunities(response.data);
     } catch (error) {
       console.error('加载小区列表失败:', error);
     }
-  };
+  }, []);
 
-  const loadLogs = async (page = 1) => {
+  const loadLogs = useCallback(async (page = 1) => {
     try {
       setLogsLoading(true);
       const response = await logsApi.getLogs({
@@ -170,30 +157,40 @@ export default function SettingsPage() {
         end_date: logsFilter.end_date || undefined,
       });
       setLogs(response.data.logs);
-      setLogsPagination({
-        ...logsPagination,
+      setLogsPagination(prev => ({
+        ...prev,
         page: response.data.pagination.page,
         total: response.data.pagination.total,
         totalPages: response.data.pagination.totalPages,
-      });
+      }));
     } catch (error) {
       console.error('加载操作日志失败:', error);
     } finally {
       setLogsLoading(false);
     }
-  };
+  }, [logsPagination.limit, logsFilter]);
 
-  const loadFilterOptions = async () => {
+  const loadFilterOptions = useCallback(async () => {
     try {
       const response = await logsApi.getFilters();
-      setFilterOptions({
-        actions: response.data.actions || [],
-        modules: response.data.modules || [],
-      });
+      setFilterOptions(response.data);
     } catch (error) {
       console.error('加载筛选选项失败:', error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'users' && isAdmin) {
+      loadUsers();
+      if (isSuperAdmin) {
+        loadCommunities();
+      }
+    }
+    if (activeTab === 'logs' && isSuperAdmin) {
+      loadLogs();
+      loadFilterOptions();
+    }
+  }, [activeTab, isAdmin, isSuperAdmin, loadUsers, loadCommunities, loadLogs, loadFilterOptions]);
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -217,8 +214,9 @@ export default function SettingsPage() {
       setOldPassword('');
       setNewPassword('');
       setConfirmPassword('');
-    } catch (error: any) {
-      setPasswordError(error.response?.data?.error || '修改失败');
+    } catch (error) {
+      const err = error as { response?: { data?: { error?: string } } };
+      setPasswordError(err.response?.data?.error || '修改失败');
     } finally {
       setPasswordLoading(false);
     }
@@ -302,8 +300,9 @@ export default function SettingsPage() {
       }
       setShowUserForm(false);
       loadUsers();
-    } catch (error: any) {
-      setUserFormError(error.response?.data?.error || '保存失败');
+    } catch (error) {
+      const err = error as { response?: { data?: { error?: string } } };
+      setUserFormError(err.response?.data?.error || '保存失败');
     } finally {
       setUserFormLoading(false);
     }
@@ -316,8 +315,9 @@ export default function SettingsPage() {
     try {
       await authApi.deleteUser(userId);
       loadUsers();
-    } catch (error: any) {
-      alert(error.response?.data?.error || '删除失败');
+    } catch (error) {
+      const err = error as { response?: { data?: { error?: string } } };
+      alert(err.response?.data?.error || '删除失败');
     }
   };
 
