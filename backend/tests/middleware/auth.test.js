@@ -369,14 +369,16 @@ describe('Auth Middleware', () => {
       expect(nextFunction).toHaveBeenCalled();
     });
 
-    it('没有指定小区ID时小区管理员应被允许', () => {
+    it('没有指定小区ID时小区管理员应被拒绝', () => {
       const middleware = communityManageMiddleware((req) => req.params.communityId);
       mockReq.user = { role: ROLES.COMMUNITY_ADMIN, communityId: 1 };
       mockReq.params = {};
 
       middleware(mockReq, mockRes, nextFunction);
 
-      expect(nextFunction).toHaveBeenCalled();
+      expect(mockRes.status).toHaveBeenCalledWith(400);
+      expect(mockRes.json).toHaveBeenCalledWith({ error: '缺少小区ID参数' });
+      expect(nextFunction).not.toHaveBeenCalled();
     });
   });
 });

@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 const express = require('express');
 const { pool } = require('../models/db');
 const { authMiddleware, ROLES } = require('../middleware/auth');
@@ -89,7 +90,7 @@ router.get('/', authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error('获取操作日志错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 
@@ -151,7 +152,7 @@ router.get('/stats', authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error('获取日志统计错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 
@@ -184,7 +185,7 @@ router.get('/filters', authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error('获取筛选选项错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 

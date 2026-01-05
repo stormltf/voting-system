@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 const express = require('express');
 const multer = require('multer');
 const XLSX = require('xlsx');
@@ -147,7 +148,7 @@ router.get('/', authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error('获取业主列表错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 
@@ -307,7 +308,7 @@ router.get('/export', authMiddleware, async (req, res) => {
     res.send(buffer);
   } catch (error) {
     console.error('导出业主数据错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 
@@ -349,7 +350,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error('获取业主详情错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 
@@ -399,7 +400,7 @@ router.post('/', authMiddleware, adminMiddleware, async (req, res) => {
       return res.status(400).json({ error: '该房间号已存在' });
     }
     console.error('创建业主错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 
@@ -463,7 +464,7 @@ router.put('/:id', authMiddleware, adminMiddleware, async (req, res) => {
       return res.status(400).json({ error: '该房间号已存在' });
     }
     console.error('更新业主错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 
@@ -499,7 +500,7 @@ router.delete('/:id', authMiddleware, adminMiddleware, async (req, res) => {
     res.json({ message: '删除成功' });
   } catch (error) {
     console.error('删除业主错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 
@@ -705,7 +706,7 @@ router.get('/buildings/:phaseId', authMiddleware, async (req, res) => {
     res.json(buildings.map(b => b.building));
   } catch (error) {
     console.error('获取楼栋列表错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 
@@ -733,7 +734,7 @@ router.get('/units/:phaseId/:building', authMiddleware, async (req, res) => {
     res.json(units.map(u => u.unit));
   } catch (error) {
     console.error('获取单元列表错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 

@@ -176,7 +176,7 @@ describe('Owners Routes', () => {
         .set('Authorization', `Bearer ${superAdminToken}`);
 
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('服务器错误');
+      expect(response.body.error).toBe('服务器内部错误，请稍后重试');
     });
   });
 
@@ -273,7 +273,7 @@ describe('Owners Routes', () => {
         .set('Authorization', `Bearer ${superAdminToken}`);
 
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('服务器错误');
+      expect(response.body.error).toBe('服务器内部错误，请稍后重试');
     });
   });
 
@@ -343,7 +343,7 @@ describe('Owners Routes', () => {
         .set('Authorization', `Bearer ${superAdminToken}`);
 
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('服务器错误');
+      expect(response.body.error).toBe('服务器内部错误，请稍后重试');
     });
   });
 
@@ -462,7 +462,7 @@ describe('Owners Routes', () => {
         .send({ phase_id: 1, room_number: '01-01-0101' });
 
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('服务器错误');
+      expect(response.body.error).toBe('服务器内部错误，请稍后重试');
     });
   });
 
@@ -575,7 +575,7 @@ describe('Owners Routes', () => {
         .send({ owner_name: '测试' });
 
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('服务器错误');
+      expect(response.body.error).toBe('服务器内部错误，请稍后重试');
     });
   });
 
@@ -628,7 +628,7 @@ describe('Owners Routes', () => {
         .set('Authorization', `Bearer ${superAdminToken}`);
 
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('服务器错误');
+      expect(response.body.error).toBe('服务器内部错误，请稍后重试');
     });
   });
 
@@ -725,7 +725,7 @@ describe('Owners Routes', () => {
         .set('Authorization', `Bearer ${superAdminToken}`);
 
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('服务器错误');
+      expect(response.body.error).toBe('服务器内部错误，请稍后重试');
     });
   });
 
@@ -774,7 +774,7 @@ describe('Owners Routes', () => {
         .set('Authorization', `Bearer ${superAdminToken}`);
 
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('服务器错误');
+      expect(response.body.error).toBe('服务器内部错误，请稍后重试');
     });
   });
 

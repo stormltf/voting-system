@@ -1286,7 +1286,7 @@ describe('Votes Routes', () => {
           });
 
         expect(response.status).toBe(400);
-        expect(response.body.error).toBe('请上传有效的 Excel 文件 (.xlsx 或 .xls)');
+        expect(response.body.error).toBe('不支持的文件类型，请上传 Excel 或 CSV 文件');
       });
 
       it('应该拒绝缺少 round_id 或 community_id', async () => {

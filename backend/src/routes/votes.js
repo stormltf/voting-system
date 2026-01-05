@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 const express = require('express');
 const multer = require('multer');
 const XLSX = require('xlsx');
@@ -12,9 +13,27 @@ const {
 const { createLogger, Actions, Modules } = require('../utils/logger');
 
 const router = express.Router();
+
+// 允许的文件 MIME 类型
+const ALLOWED_MIME_TYPES = [
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/csv'
+];
+
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 } // 限制 5MB
+  limits: { fileSize: 5 * 1024 * 1024 }, // 限制 5MB
+  fileFilter: (req, file, cb) => {
+    // 检查文件扩展名
+    const ext = file.originalname.toLowerCase().split('.').pop();
+    const allowedExts = ['xls', 'xlsx', 'csv'];
+    
+    if (!allowedExts.includes(ext) && !ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+      return cb(new Error('不支持的文件类型，请上传 Excel 或 CSV 文件'));
+    }
+    cb(null, true);
+  }
 });
 
 // 辅助函数：获取投票轮次的小区ID
@@ -466,7 +485,20 @@ router.post('/init', authMiddleware, adminMiddleware, async (req, res) => {
 });
 
 // Excel 批量导入投票状态（管理员可操作）
-router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), async (req, res) => {
+router.post('/import', authMiddleware, adminMiddleware, (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      if (err.message && err.message.includes('文件类型')) {
+        return res.status(400).json({ error: err.message });
+      }
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: '文件大小超过限制（最大5MB）' });
+      }
+      return res.status(400).json({ error: err.message || '文件上传失败' });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     const { round_id, community_id, vote_column } = req.body;
 

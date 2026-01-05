@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../models/db');
@@ -57,7 +58,7 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     console.error('登录错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 
@@ -89,7 +90,7 @@ router.get('/me', authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error('获取用户信息错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 
@@ -134,7 +135,7 @@ router.put('/password', authMiddleware, async (req, res) => {
     res.json({ message: '密码修改成功' });
   } catch (error) {
     console.error('修改密码错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 
@@ -170,7 +171,7 @@ router.get('/users', authMiddleware, adminMiddleware, async (req, res) => {
     })));
   } catch (error) {
     console.error('获取用户列表错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 
@@ -250,7 +251,7 @@ router.post('/users', authMiddleware, adminMiddleware, async (req, res) => {
       return res.status(400).json({ error: '用户名已存在' });
     }
     console.error('创建用户错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 
@@ -349,7 +350,7 @@ router.put('/users/:id', authMiddleware, adminMiddleware, async (req, res) => {
     res.json({ message: '用户更新成功' });
   } catch (error) {
     console.error('更新用户错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 
@@ -397,7 +398,7 @@ router.delete('/users/:id', authMiddleware, adminMiddleware, async (req, res) =>
     res.json({ message: '用户删除成功' });
   } catch (error) {
     console.error('删除用户错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 

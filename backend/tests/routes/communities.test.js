@@ -78,7 +78,7 @@ describe('Communities Routes', () => {
         .set('Authorization', `Bearer ${superAdminToken}`);
 
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('服务器错误');
+      expect(response.body.error).toBe('服务器内部错误，请稍后重试');
     });
   });
 
@@ -138,7 +138,7 @@ describe('Communities Routes', () => {
         .set('Authorization', `Bearer ${superAdminToken}`);
 
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('服务器错误');
+      expect(response.body.error).toBe('服务器内部错误，请稍后重试');
     });
   });
 
@@ -197,7 +197,7 @@ describe('Communities Routes', () => {
         .send({ name: '新小区', address: '地址' });
 
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('服务器错误');
+      expect(response.body.error).toBe('服务器内部错误，请稍后重试');
     });
   });
 
@@ -271,7 +271,7 @@ describe('Communities Routes', () => {
         .send({ name: '测试' });
 
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('服务器错误');
+      expect(response.body.error).toBe('服务器内部错误，请稍后重试');
     });
   });
 
@@ -327,7 +327,7 @@ describe('Communities Routes', () => {
         .set('Authorization', `Bearer ${superAdminToken}`);
 
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('服务器错误');
+      expect(response.body.error).toBe('服务器内部错误，请稍后重试');
     });
   });
 
@@ -376,7 +376,7 @@ describe('Communities Routes', () => {
           .set('Authorization', `Bearer ${superAdminToken}`);
 
         expect(response.status).toBe(500);
-        expect(response.body.error).toBe('服务器错误');
+        expect(response.body.error).toBe('服务器内部错误，请稍后重试');
       });
     });
 
@@ -462,7 +462,7 @@ describe('Communities Routes', () => {
           .send({ name: '三期', code: 'P3' });
 
         expect(response.status).toBe(500);
-        expect(response.body.error).toBe('服务器错误');
+        expect(response.body.error).toBe('服务器内部错误，请稍后重试');
       });
     });
 
@@ -540,7 +540,7 @@ describe('Communities Routes', () => {
           .send({ name: '测试' });
 
         expect(response.status).toBe(500);
-        expect(response.body.error).toBe('服务器错误');
+        expect(response.body.error).toBe('服务器内部错误，请稍后重试');
       });
     });
 
@@ -598,7 +598,7 @@ describe('Communities Routes', () => {
           .set('Authorization', `Bearer ${superAdminToken}`);
 
         expect(response.status).toBe(500);
-        expect(response.body.error).toBe('服务器错误');
+        expect(response.body.error).toBe('服务器内部错误，请稍后重试');
       });
     });
   });

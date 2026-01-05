@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 const express = require('express');
 const { pool } = require('../models/db');
 const {
@@ -37,7 +38,7 @@ router.get('/', authMiddleware, async (req, res) => {
     res.json(communities);
   } catch (error) {
     console.error('获取小区列表错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 
@@ -76,7 +77,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error('获取小区详情错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 
@@ -111,7 +112,7 @@ router.post('/', authMiddleware, superAdminMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error('创建小区错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 
@@ -148,7 +149,7 @@ router.put('/:id', authMiddleware, adminMiddleware, async (req, res) => {
     res.json({ id: communityId, name, address, description });
   } catch (error) {
     console.error('更新小区错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 
@@ -182,7 +183,7 @@ router.delete('/:id', authMiddleware, superAdminMiddleware, async (req, res) => 
     res.json({ message: '删除成功' });
   } catch (error) {
     console.error('删除小区错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 
@@ -210,7 +211,7 @@ router.get('/:communityId/phases', authMiddleware, async (req, res) => {
     res.json(phases);
   } catch (error) {
     console.error('获取期数列表错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 
@@ -256,7 +257,7 @@ router.post('/:communityId/phases', authMiddleware, adminMiddleware, async (req,
       return res.status(400).json({ error: '该期数代码已存在' });
     }
     console.error('创建期数错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 
@@ -300,7 +301,7 @@ router.put('/phases/:id', authMiddleware, adminMiddleware, async (req, res) => {
       return res.status(400).json({ error: '该期数代码已存在' });
     }
     console.error('更新期数错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 
@@ -336,7 +337,7 @@ router.delete('/phases/:id', authMiddleware, adminMiddleware, async (req, res) =
     res.json({ message: '删除成功' });
   } catch (error) {
     console.error('删除期数错误:', error);
-    res.status(500).json({ error: '服务器错误' });
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 

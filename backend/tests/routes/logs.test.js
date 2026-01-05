@@ -212,7 +212,7 @@ describe('Logs Routes', () => {
         .set('Authorization', `Bearer ${superAdminToken}`);
 
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('服务器错误');
+      expect(response.body.error).toBe('服务器内部错误，请稍后重试');
     });
   });
 
@@ -225,7 +225,7 @@ describe('Logs Routes', () => {
         .set('Authorization', `Bearer ${superAdminToken}`);
 
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('服务器错误');
+      expect(response.body.error).toBe('服务器内部错误，请稍后重试');
     });
 
     it('GET /api/logs/stats 应该处理服务器错误', async () => {
@@ -236,7 +236,7 @@ describe('Logs Routes', () => {
         .set('Authorization', `Bearer ${superAdminToken}`);
 
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('服务器错误');
+      expect(response.body.error).toBe('服务器内部错误，请稍后重试');
     });
   });
 });

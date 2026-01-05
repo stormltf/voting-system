@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 const { pool } = require('../models/db');
 
 /**

@@ -102,7 +102,7 @@ describe('Auth Routes', () => {
         .send({ username: 'admin', password: 'password123' });
 
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('服务器错误');
+      expect(response.body.error).toBe('服务器内部错误，请稍后重试');
     });
   });
 
@@ -161,7 +161,7 @@ describe('Auth Routes', () => {
         .set('Authorization', `Bearer ${superAdminToken}`);
 
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('服务器错误');
+      expect(response.body.error).toBe('服务器内部错误，请稍后重试');
     });
   });
 
@@ -228,7 +228,7 @@ describe('Auth Routes', () => {
         .send({ oldPassword: 'oldpassword', newPassword: 'newpassword' });
 
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('服务器错误');
+      expect(response.body.error).toBe('服务器内部错误，请稍后重试');
     });
   });
 
@@ -278,7 +278,7 @@ describe('Auth Routes', () => {
         .set('Authorization', `Bearer ${superAdminToken}`);
 
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('服务器错误');
+      expect(response.body.error).toBe('服务器内部错误，请稍后重试');
     });
   });
 
@@ -424,7 +424,7 @@ describe('Auth Routes', () => {
         .send({ username: 'newuser', password: 'password123', role: ROLES.SUPER_ADMIN });
 
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('服务器错误');
+      expect(response.body.error).toBe('服务器内部错误，请稍后重试');
     });
   });
 
@@ -590,7 +590,7 @@ describe('Auth Routes', () => {
         .send({ name: '测试' });
 
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('服务器错误');
+      expect(response.body.error).toBe('服务器内部错误，请稍后重试');
     });
   });
 
@@ -673,7 +673,7 @@ describe('Auth Routes', () => {
         .set('Authorization', `Bearer ${superAdminToken}`);
 
       expect(response.status).toBe(500);
-      expect(response.body.error).toBe('服务器错误');
+      expect(response.body.error).toBe('服务器内部错误，请稍后重试');
     });
   });
 });

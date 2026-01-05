@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -63,50 +64,76 @@ function adminMiddleware(req, res, next) {
 // communityIdExtractor: 从请求中提取 community_id 的函数
 function communityAccessMiddleware(communityIdExtractor) {
   return (req, res, next) => {
-    // 超级管理员可以访问所有小区
-    if (req.user.role === ROLES.SUPER_ADMIN) {
-      return next();
+    try {
+      // 超级管理员可以访问所有小区
+      if (req.user.role === ROLES.SUPER_ADMIN) {
+        return next();
+      }
+
+      const communityId = communityIdExtractor(req);
+
+      // 如果没有指定小区ID，检查是否在查询自己的小区
+      if (!communityId) {
+        // 非超级管理员必须指定小区或只能访问自己的小区
+        req.communityFilter = req.user.communityId;
+        return next();
+      }
+
+      // 验证communityId是否为有效数字
+      const parsedCommunityId = parseInt(communityId);
+      if (isNaN(parsedCommunityId) || parsedCommunityId <= 0) {
+        return res.status(400).json({ error: '无效的小区ID格式' });
+      }
+
+      // 检查用户是否属于该小区
+      if (req.user.communityId !== parsedCommunityId) {
+        return res.status(403).json({ error: '无权访问该小区数据' });
+      }
+
+      next();
+    } catch (error) {
+      console.error('权限检查错误:', error);
+      return res.status(500).json({ error: '权限验证失败' });
     }
-
-    const communityId = communityIdExtractor(req);
-
-    // 如果没有指定小区ID，检查是否在查询自己的小区
-    if (!communityId) {
-      // 非超级管理员必须指定小区或只能访问自己的小区
-      req.communityFilter = req.user.communityId;
-      return next();
-    }
-
-    // 检查用户是否属于该小区
-    if (req.user.communityId !== parseInt(communityId)) {
-      return res.status(403).json({ error: '无权访问该小区数据' });
-    }
-
-    next();
   };
 }
 
 // 小区管理权限验证（只有管理员可以修改数据）
 function communityManageMiddleware(communityIdExtractor) {
   return (req, res, next) => {
-    // 超级管理员可以管理所有小区
-    if (req.user.role === ROLES.SUPER_ADMIN) {
-      return next();
+    try {
+      // 超级管理员可以管理所有小区
+      if (req.user.role === ROLES.SUPER_ADMIN) {
+        return next();
+      }
+
+      // 普通用户不能修改数据
+      if (req.user.role === ROLES.COMMUNITY_USER) {
+        return res.status(403).json({ error: '普通用户只有查看权限' });
+      }
+
+      const communityId = communityIdExtractor(req);
+
+      if (!communityId) {
+        return res.status(400).json({ error: '缺少小区ID参数' });
+      }
+
+      // 验证communityId是否为有效数字
+      const parsedCommunityId = parseInt(communityId);
+      if (isNaN(parsedCommunityId) || parsedCommunityId <= 0) {
+        return res.status(400).json({ error: '无效的小区ID格式' });
+      }
+
+      // 小区管理员只能管理自己的小区
+      if (req.user.communityId !== parsedCommunityId) {
+        return res.status(403).json({ error: '无权管理该小区数据' });
+      }
+
+      next();
+    } catch (error) {
+      console.error('管理权限检查错误:', error);
+      return res.status(500).json({ error: '权限验证失败' });
     }
-
-    // 普通用户不能修改数据
-    if (req.user.role === ROLES.COMMUNITY_USER) {
-      return res.status(403).json({ error: '普通用户只有查看权限' });
-    }
-
-    const communityId = communityIdExtractor(req);
-
-    // 小区管理员只能管理自己的小区
-    if (communityId && req.user.communityId !== parseInt(communityId)) {
-      return res.status(403).json({ error: '无权管理该小区数据' });
-    }
-
-    next();
   };
 }
 
