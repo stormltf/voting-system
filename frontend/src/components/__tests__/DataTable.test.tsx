@@ -242,4 +242,200 @@ describe('DataTable', () => {
     expect(screen.getByText('张三')).toBeInTheDocument();
     expect(screen.getByText('-')).toBeInTheDocument(); // 缺失字段显示为 -
   });
+
+  describe('分页页码显示', () => {
+    it('总页数小于等于7时应显示所有页码', () => {
+      const pagination = {
+        page: 1,
+        limit: 10,
+        total: 50,
+        totalPages: 5,
+      };
+
+      render(
+        <DataTable
+          columns={mockColumns}
+          data={mockData}
+          pagination={pagination}
+          onPageChange={jest.fn()}
+        />
+      );
+
+      const buttons = screen.getAllByRole('button');
+      const pageButtons = buttons.filter(b => b.textContent?.match(/^[1-5]$/));
+      expect(pageButtons.length).toBe(5);
+    });
+
+    it('当前页靠前时应显示前5页和省略号', () => {
+      const pagination = {
+        page: 2,
+        limit: 10,
+        total: 100,
+        totalPages: 10,
+      };
+
+      render(
+        <DataTable
+          columns={mockColumns}
+          data={mockData}
+          pagination={pagination}
+          onPageChange={jest.fn()}
+        />
+      );
+
+      expect(screen.getByText('...')).toBeInTheDocument();
+      const buttons = screen.getAllByRole('button');
+      const pageButtons = buttons.filter(b => b.textContent?.match(/^\d+$/));
+      expect(pageButtons.length).toBeGreaterThan(0);
+    });
+
+    it('当前页靠后时应显示省略号和后几页', () => {
+      const pagination = {
+        page: 9,
+        limit: 10,
+        total: 100,
+        totalPages: 10,
+      };
+
+      render(
+        <DataTable
+          columns={mockColumns}
+          data={mockData}
+          pagination={pagination}
+          onPageChange={jest.fn()}
+        />
+      );
+
+      expect(screen.getByText('...')).toBeInTheDocument();
+      const buttons = screen.getAllByRole('button');
+      const pageButtons = buttons.filter(b => b.textContent?.match(/^\d+$/));
+      expect(pageButtons.length).toBeGreaterThan(0);
+    });
+
+    it('当前页在中间时应显示两侧省略号', () => {
+      const pagination = {
+        page: 5,
+        limit: 10,
+        total: 100,
+        totalPages: 10,
+      };
+
+      render(
+        <DataTable
+          columns={mockColumns}
+          data={mockData}
+          pagination={pagination}
+          onPageChange={jest.fn()}
+        />
+      );
+
+      const ellipses = screen.getAllByText('...');
+      expect(ellipses.length).toBe(2);
+    });
+
+    it('点击页码应该触发 onPageChange', () => {
+      const handlePageChange = jest.fn();
+      const pagination = {
+        page: 5,
+        limit: 10,
+        total: 100,
+        totalPages: 10,
+      };
+
+      render(
+        <DataTable
+          columns={mockColumns}
+          data={mockData}
+          pagination={pagination}
+          onPageChange={handlePageChange}
+        />
+      );
+
+      fireEvent.click(screen.getByText('4'));
+      expect(handlePageChange).toHaveBeenCalledWith(4);
+    });
+
+    it('点击第一页按钮应该跳到第一页', () => {
+      const handlePageChange = jest.fn();
+      const pagination = {
+        page: 5,
+        limit: 10,
+        total: 100,
+        totalPages: 10,
+      };
+
+      render(
+        <DataTable
+          columns={mockColumns}
+          data={mockData}
+          pagination={pagination}
+          onPageChange={handlePageChange}
+        />
+      );
+
+      fireEvent.click(screen.getByTitle('第一页'));
+      expect(handlePageChange).toHaveBeenCalledWith(1);
+    });
+
+    it('点击最后一页按钮应该跳到最后一页', () => {
+      const handlePageChange = jest.fn();
+      const pagination = {
+        page: 5,
+        limit: 10,
+        total: 100,
+        totalPages: 10,
+      };
+
+      render(
+        <DataTable
+          columns={mockColumns}
+          data={mockData}
+          pagination={pagination}
+          onPageChange={handlePageChange}
+        />
+      );
+
+      fireEvent.click(screen.getByTitle('最后一页'));
+      expect(handlePageChange).toHaveBeenCalledWith(10);
+    });
+  });
+
+  describe('取消选择功能', () => {
+    it('取消单行选择应该正确更新', () => {
+      const handleSelectChange = jest.fn();
+
+      render(
+        <DataTable
+          columns={mockColumns}
+          data={mockData}
+          onSelectChange={handleSelectChange}
+          selectedIds={[1, 2]}
+        />
+      );
+
+      const checkboxes = screen.getAllByRole('checkbox');
+      fireEvent.click(checkboxes[1]); // 取消选择第一行
+
+      expect(handleSelectChange).toHaveBeenCalledWith([2]);
+    });
+  });
+
+  describe('sticky 列功能', () => {
+    it('应该支持 sticky 列', () => {
+      const stickyColumns = [
+        { key: 'name', header: '姓名', sticky: true, stickyOffset: 0 },
+        { key: 'email', header: '邮箱' },
+      ];
+
+      render(
+        <DataTable
+          columns={stickyColumns}
+          data={mockData}
+        />
+      );
+
+      expect(screen.getByText('姓名')).toBeInTheDocument();
+      expect(screen.getByText('邮箱')).toBeInTheDocument();
+    });
+  });
 });
