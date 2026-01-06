@@ -70,17 +70,18 @@ describe('StatsCard', () => {
 
   it('应该应用不同的颜色主题', () => {
     const { container, rerender } = render(
-      <StatsCard title="测试" value={1} color="blue" />
+      <StatsCard title="测试" value={1} color="blue" icon={Users} />
     );
 
-    // 颜色现在使用渐变背景
-    expect(container.firstChild).toHaveClass('from-blue-50');
+    // 颜色现在应用在图标容器上
+    const iconContainer = container.querySelector('.bg-blue-50');
+    expect(iconContainer).toBeInTheDocument();
 
-    rerender(<StatsCard title="测试" value={1} color="green" />);
-    expect(container.firstChild).toHaveClass('from-emerald-50');
+    rerender(<StatsCard title="测试" value={1} color="green" icon={Users} />);
+    expect(container.querySelector('.bg-emerald-50')).toBeInTheDocument();
 
-    rerender(<StatsCard title="测试" value={1} color="red" />);
-    expect(container.firstChild).toHaveClass('from-red-50');
+    rerender(<StatsCard title="测试" value={1} color="red" icon={Users} />);
+    expect(container.querySelector('.bg-red-50')).toBeInTheDocument();
   });
 
   it('默认颜色应该是白色背景', () => {
