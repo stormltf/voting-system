@@ -18,40 +18,28 @@ interface StatsCardProps {
 
 const colorConfig = {
   default: {
-    bg: 'bg-white',
-    iconBg: 'bg-slate-100',
-    iconText: 'text-slate-600',
-    accent: 'from-slate-500 to-slate-600',
+    iconBg: 'bg-zinc-100',
+    iconText: 'text-zinc-600',
   },
   blue: {
-    bg: 'bg-gradient-to-br from-blue-50 to-blue-100/50',
-    iconBg: 'bg-blue-500',
-    iconText: 'text-white',
-    accent: 'from-blue-500 to-blue-600',
+    iconBg: 'bg-blue-50',
+    iconText: 'text-blue-600',
   },
   green: {
-    bg: 'bg-gradient-to-br from-emerald-50 to-emerald-100/50',
-    iconBg: 'bg-emerald-500',
-    iconText: 'text-white',
-    accent: 'from-emerald-500 to-emerald-600',
+    iconBg: 'bg-emerald-50',
+    iconText: 'text-emerald-600',
   },
   yellow: {
-    bg: 'bg-gradient-to-br from-amber-50 to-amber-100/50',
-    iconBg: 'bg-amber-500',
-    iconText: 'text-white',
-    accent: 'from-amber-500 to-amber-600',
+    iconBg: 'bg-amber-50',
+    iconText: 'text-amber-600',
   },
   red: {
-    bg: 'bg-gradient-to-br from-red-50 to-red-100/50',
-    iconBg: 'bg-red-500',
-    iconText: 'text-white',
-    accent: 'from-red-500 to-red-600',
+    iconBg: 'bg-red-50',
+    iconText: 'text-red-600',
   },
   purple: {
-    bg: 'bg-gradient-to-br from-purple-50 to-purple-100/50',
-    iconBg: 'bg-purple-500',
-    iconText: 'text-white',
-    accent: 'from-purple-500 to-purple-600',
+    iconBg: 'bg-violet-50',
+    iconText: 'text-violet-600',
   },
 };
 
@@ -69,47 +57,40 @@ export default function StatsCard({
   return (
     <div
       className={cn(
-        'relative rounded-2xl border border-slate-200/60 p-6 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden group',
-        config.bg,
+        'relative bg-white rounded-xl border border-zinc-200/80 p-5 transition-all duration-200 hover:border-zinc-300',
         className
       )}
     >
-      {/* 装饰性背景 */}
-      <div className={cn(
-        'absolute -right-8 -top-8 w-32 h-32 rounded-full opacity-10 bg-gradient-to-br',
-        config.accent
-      )} />
-
-      <div className="relative flex items-start justify-between">
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-slate-500">{title}</p>
-          <p className="text-3xl font-bold tracking-tight text-slate-900">{value}</p>
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1.5 min-w-0 flex-1">
+          <p className="text-[13px] font-medium text-zinc-500">{title}</p>
+          <p className="text-2xl font-semibold tracking-tight text-zinc-900">{value}</p>
           {subtitle && (
-            <p className="text-sm text-slate-500">{subtitle}</p>
+            <p className="text-[12px] text-zinc-400 truncate">{subtitle}</p>
           )}
           {trend && (
-            <div className="flex items-center gap-1.5 mt-2">
+            <div className="flex items-center gap-1.5 pt-1">
               <span
                 className={cn(
-                  'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
+                  'inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium',
                   trend.value >= 0
-                    ? 'bg-emerald-100 text-emerald-700'
-                    : 'bg-red-100 text-red-700'
+                    ? 'bg-emerald-50 text-emerald-600'
+                    : 'bg-red-50 text-red-600'
                 )}
               >
                 {trend.value >= 0 ? '↑' : '↓'} {Math.abs(trend.value)}%
               </span>
-              <span className="text-xs text-slate-400">{trend.label}</span>
+              <span className="text-[11px] text-zinc-400">{trend.label}</span>
             </div>
           )}
         </div>
         {Icon && (
           <div className={cn(
-            'p-3 rounded-xl shadow-lg transition-transform duration-300 group-hover:scale-110',
+            'p-2.5 rounded-lg flex-shrink-0',
             config.iconBg,
             config.iconText
           )}>
-            <Icon className="w-6 h-6" />
+            <Icon className="w-5 h-5" />
           </div>
         )}
       </div>

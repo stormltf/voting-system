@@ -94,78 +94,73 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   return (
     <div
       className={cn(
-        'flex flex-col h-full w-64 bg-gradient-to-b from-slate-900 to-slate-800 text-white',
-        // Mobile styles: fixed position with slide animation
+        'flex flex-col h-full w-64 bg-white border-r border-zinc-200/80',
         'fixed lg:static inset-y-0 left-0 z-50',
         'transform transition-transform duration-300 ease-in-out',
-        // On mobile: slide in/out based on isOpen
         isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       )}
     >
-      {/* Logo */}
-      <div className="p-5 border-b border-slate-700/50">
+      <div className="p-5 border-b border-zinc-100">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <Vote className="w-5 h-5 text-white" />
+          <div className="w-9 h-9 rounded-lg bg-zinc-900 flex items-center justify-center">
+            <Vote className="w-4.5 h-4.5 text-white" />
           </div>
           <div className="flex-1">
-            <h1 className="text-lg font-bold tracking-tight">投票管理系统</h1>
-            <p className="text-xs text-slate-400">业主大会投票</p>
+            <h1 className="text-[15px] font-semibold text-zinc-900 tracking-tight">投票管理系统</h1>
+            <p className="text-xs text-zinc-400">业主大会投票</p>
           </div>
-          {/* Mobile close button */}
           <button
-            className="lg:hidden p-2 hover:bg-slate-700/50 rounded-lg transition-colors"
+            className="lg:hidden p-2 hover:bg-zinc-100 rounded-md transition-colors"
             onClick={closeSidebar}
             aria-label="关闭菜单"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4 text-zinc-500" />
           </button>
         </div>
       </div>
 
-      {/* 小区选择器 */}
-      <div className="p-4 border-b border-slate-700/50" ref={dropdownRef}>
-        <label className="text-xs text-slate-400 font-medium block mb-2 uppercase tracking-wider">
+      <div className="p-4 border-b border-zinc-100" ref={dropdownRef}>
+        <label className="text-[11px] text-zinc-400 font-medium block mb-2 uppercase tracking-wide">
           当前小区
         </label>
         <div className="relative">
           <button
             onClick={() => setShowDropdown(!showDropdown)}
             className={cn(
-              'w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition-all duration-200',
-              'bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700/50',
-              showDropdown && 'ring-2 ring-blue-500/50 border-blue-500/50'
+              'w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all duration-200',
+              'bg-zinc-50 hover:bg-zinc-100 border border-zinc-200/80 text-zinc-700',
+              showDropdown && 'ring-2 ring-blue-500/20 border-blue-300'
             )}
           >
-            <span className="truncate font-medium">
+            <span className="truncate text-[13px] font-medium">
               {selectedCommunity?.name || '请选择小区'}
             </span>
             <ChevronDown className={cn(
-              'w-4 h-4 flex-shrink-0 transition-transform duration-200',
+              'w-3.5 h-3.5 flex-shrink-0 transition-transform duration-200 text-zinc-400',
               showDropdown && 'rotate-180'
             )} />
           </button>
 
           {showDropdown && (
-            <div className="absolute top-full left-0 right-0 mt-2 bg-slate-800 rounded-lg shadow-xl shadow-black/20 z-50 max-h-60 overflow-y-auto border border-slate-700/50 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="absolute top-full left-0 right-0 mt-1.5 bg-white rounded-lg shadow-lg shadow-zinc-900/10 z-50 max-h-60 overflow-y-auto border border-zinc-200 animate-slide-down">
               {communities.map((community) => (
                 <button
                   key={community.id}
                   onClick={() => handleSelectCommunity(community)}
                   className={cn(
-                    'w-full text-left px-3 py-2.5 flex items-center justify-between transition-colors',
-                    'hover:bg-slate-700/50 first:rounded-t-lg last:rounded-b-lg',
-                    selectedCommunity?.id === community.id && 'bg-blue-600/20 text-blue-400'
+                    'w-full text-left px-3 py-2 flex items-center justify-between transition-colors text-[13px]',
+                    'hover:bg-zinc-50 first:rounded-t-lg last:rounded-b-lg',
+                    selectedCommunity?.id === community.id && 'bg-blue-50 text-blue-600'
                   )}
                 >
                   <span>{community.name}</span>
                   {selectedCommunity?.id === community.id && (
-                    <Check className="w-4 h-4 text-blue-400" />
+                    <Check className="w-3.5 h-3.5 text-blue-500" />
                   )}
                 </button>
               ))}
               {communities.length === 0 && (
-                <div className="px-3 py-4 text-slate-400 text-sm text-center">
+                <div className="px-3 py-4 text-zinc-400 text-[13px] text-center">
                   暂无小区
                 </div>
               )}
@@ -174,8 +169,7 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
         </div>
       </div>
 
-      {/* 菜单 */}
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+      <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
         {menuItems.map((item) => {
           const isActive = pathname === item.href ||
             (item.href !== '/dashboard' && pathname.startsWith(item.href));
@@ -185,40 +179,39 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
               href={item.href}
               onClick={handleLinkClick}
               className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group',
+                'flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group',
                 isActive
-                  ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/20'
-                  : 'text-slate-300 hover:bg-slate-700/50 hover:text-white'
+                  ? 'bg-zinc-100 text-zinc-900'
+                  : 'text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900'
               )}
             >
               <item.icon className={cn(
-                'w-5 h-5 transition-transform duration-200',
-                !isActive && 'group-hover:scale-110'
+                'w-[18px] h-[18px] transition-colors duration-200',
+                isActive ? 'text-zinc-700' : 'text-zinc-400 group-hover:text-zinc-600'
               )} />
-              <span className="font-medium">{item.label}</span>
+              <span className="text-[13px] font-medium">{item.label}</span>
             </Link>
           );
         })}
       </nav>
 
-      {/* 用户信息 */}
-      <div className="p-4 border-t border-slate-700/50 bg-slate-900/50">
+      <div className="p-4 border-t border-zinc-100">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-slate-600 to-slate-700 flex items-center justify-center text-sm font-bold">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-zinc-100 to-zinc-200 flex items-center justify-center text-xs font-semibold text-zinc-600">
             {(user?.name || user?.username || 'U').charAt(0).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-medium truncate">{user?.name || user?.username}</p>
-            <p className="text-xs text-slate-400">
+            <p className="text-[13px] font-medium text-zinc-800 truncate">{user?.name || user?.username}</p>
+            <p className="text-[11px] text-zinc-400">
               {user?.role === 'super_admin' ? '超级管理员' : user?.role === 'community_admin' ? '小区管理员' : '普通用户'}
             </p>
           </div>
           <button
             onClick={logout}
-            className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all duration-200"
+            className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-all duration-200"
             title="退出登录"
           >
-            <LogOut className="w-5 h-5" />
+            <LogOut className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -226,15 +219,14 @@ export default function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   );
 }
 
-// Mobile menu toggle button component for use in layout
 export function MobileMenuButton({ onClick }: { onClick: () => void }) {
   return (
     <button
-      className="lg:hidden p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-200 rounded-lg transition-colors"
+      className="lg:hidden p-2 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 rounded-md transition-colors"
       onClick={onClick}
       aria-label="打开菜单"
     >
-      <Menu className="w-6 h-6" />
+      <Menu className="w-5 h-5" />
     </button>
   );
 }

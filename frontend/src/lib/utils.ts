@@ -23,9 +23,13 @@ export function formatArea(area: number | string | null | undefined): string {
   return `${num.toFixed(2)} m²`;
 }
 
-export function formatPercent(value: number, total: number): string {
-  if (total === 0) return '0%';
-  return `${((value / total) * 100).toFixed(1)}%`;
+export function formatPercent(value: number | null | undefined, total: number | null | undefined): string {
+  const v = value ?? 0;
+  const t = total ?? 0;
+  if (t === 0) return '0%';
+  const percent = (v / t) * 100;
+  if (isNaN(percent) || !isFinite(percent)) return '0%';
+  return `${percent.toFixed(1)}%`;
 }
 
 // 投票状态映射

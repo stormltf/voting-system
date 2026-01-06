@@ -107,24 +107,22 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
-          <span className="text-sm text-slate-500">加载中...</span>
+        <div className="flex flex-col items-center gap-2">
+          <Loader2 className="w-6 h-6 text-zinc-400 animate-spin" />
+          <span className="text-[13px] text-zinc-400">加载中...</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
-      {/* 页面标题 */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">仪表盘</h1>
-        <p className="text-slate-500 mt-1">投票数据概览</p>
+    <div className="space-y-6 max-w-7xl">
+      <div className="space-y-1">
+        <h1 className="text-xl font-semibold text-zinc-900 tracking-tight">仪表盘</h1>
+        <p className="text-[13px] text-zinc-500">投票数据概览</p>
       </div>
 
-      {/* 统计卡片 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatsCard
           title="总业主数"
           value={formatNumber(totalOwners)}
@@ -159,21 +157,20 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* 各期统计 */}
-      <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+      <div className="bg-white rounded-xl border border-zinc-200/80 overflow-hidden">
+        <div className="px-5 py-4 border-b border-zinc-100">
           <div className="flex items-center gap-2">
-            <Building className="w-5 h-5 text-slate-400" />
-            <h2 className="text-lg font-semibold text-slate-900">各期统计</h2>
+            <Building className="w-4 h-4 text-zinc-400" />
+            <h2 className="text-[15px] font-medium text-zinc-900">各期统计</h2>
             {activeRound && (
-              <span className="text-sm font-normal text-slate-500 ml-2">
-                （{activeRound.round_name} 投票数据）
+              <span className="text-[13px] text-zinc-400 ml-1">
+                · {activeRound.round_name}
               </span>
             )}
           </div>
         </div>
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="p-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {phaseStats.map((phase) => {
               const phaseHouseArea = parseFloat(String(phase.total_area || 0));
               const phaseParkingArea = parseFloat(String(phase.total_parking_area || 0));
@@ -191,67 +188,62 @@ export default function DashboardPage() {
               return (
                 <div
                   key={phase.phase_id}
-                  className="group relative bg-gradient-to-br from-slate-50 to-white border border-slate-200/60 rounded-xl p-5 hover:shadow-md hover:border-slate-300/60 transition-all duration-300"
+                  className="group bg-zinc-50/50 border border-zinc-200/60 rounded-lg p-4 hover:border-zinc-300 transition-colors duration-200"
                 >
-                  {/* 装饰 */}
-                  <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-blue-500/5 to-transparent rounded-bl-full" />
-
-                  <div className="relative">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
-                        <Building className="w-5 h-5 text-white" />
-                      </div>
-                      <h3 className="font-semibold text-slate-900">{phase.phase_name}</h3>
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="w-8 h-8 rounded-md bg-zinc-900 flex items-center justify-center">
+                      <Building className="w-4 h-4 text-white" />
                     </div>
-
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-slate-500">业主数</span>
-                        <span className="text-lg font-bold text-slate-900">{formatNumber(phase.owner_count)} <span className="text-sm font-normal text-slate-400">户</span></span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-slate-500">总面积</span>
-                        <span className="font-semibold text-slate-700">{formatArea(phaseTotalArea)}</span>
-                      </div>
-                      <div className="text-xs text-slate-400 text-right">
-                        房屋 {formatArea(phaseHouseArea)} / 车位 {formatArea(phaseParkingArea)}
-                      </div>
-                    </div>
-
-                    {activeRound && (
-                      <div className="mt-4 pt-4 border-t border-slate-200/60 space-y-3">
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-slate-500">已投票</span>
-                          <span className="font-bold text-emerald-600">
-                            {phase.voted_count || 0} <span className="text-sm font-normal">户</span>
-                            <span className="text-xs text-slate-400 ml-1">({votePercentage.toFixed(1)}%)</span>
-                          </span>
-                        </div>
-                        <div className="relative h-2 bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            className="absolute inset-y-0 left-0 bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full transition-all duration-700 ease-out"
-                            style={{ width: `${votePercentage}%` }}
-                          />
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-slate-500">已投面积</span>
-                          <span className="font-semibold text-emerald-600">
-                            {formatArea(phaseVotedTotalArea)}
-                            <span className="text-xs text-slate-400 ml-1">({areaVotePercentage.toFixed(1)}%)</span>
-                          </span>
-                        </div>
-                      </div>
-                    )}
+                    <h3 className="text-[14px] font-medium text-zinc-900">{phase.phase_name}</h3>
                   </div>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[12px] text-zinc-500">业主数</span>
+                      <span className="text-[14px] font-semibold text-zinc-900">{formatNumber(phase.owner_count)} <span className="text-[12px] font-normal text-zinc-400">户</span></span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[12px] text-zinc-500">总面积</span>
+                      <span className="text-[13px] font-medium text-zinc-700">{formatArea(phaseTotalArea)}</span>
+                    </div>
+                    <div className="text-[11px] text-zinc-400 text-right">
+                      房屋 {formatArea(phaseHouseArea)} / 车位 {formatArea(phaseParkingArea)}
+                    </div>
+                  </div>
+
+                  {activeRound && (
+                    <div className="mt-3 pt-3 border-t border-zinc-200/60 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[12px] text-zinc-500">已投票</span>
+                        <span className="text-[13px] font-semibold text-emerald-600">
+                          {phase.voted_count || 0} <span className="font-normal">户</span>
+                          <span className="text-[11px] text-zinc-400 ml-1">({votePercentage.toFixed(1)}%)</span>
+                        </span>
+                      </div>
+                      <div className="relative h-1.5 bg-zinc-200 rounded-full overflow-hidden">
+                        <div
+                          className="absolute inset-y-0 left-0 bg-emerald-500 rounded-full transition-all duration-500 ease-out"
+                          style={{ width: `${votePercentage}%` }}
+                        />
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[12px] text-zinc-500">已投面积</span>
+                        <span className="text-[13px] font-medium text-emerald-600">
+                          {formatArea(phaseVotedTotalArea)}
+                          <span className="text-[11px] text-zinc-400 ml-1">({areaVotePercentage.toFixed(1)}%)</span>
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
             {phaseStats.length === 0 && (
-              <div className="col-span-full flex flex-col items-center py-12">
-                <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-3">
-                  <Building className="w-8 h-8 text-slate-400" />
+              <div className="col-span-full flex flex-col items-center py-10">
+                <div className="w-12 h-12 rounded-lg bg-zinc-100 flex items-center justify-center mb-2">
+                  <Building className="w-5 h-5 text-zinc-400" />
                 </div>
-                <p className="text-slate-500">暂无期数数据</p>
+                <p className="text-[13px] text-zinc-400">暂无期数数据</p>
               </div>
             )}
           </div>
@@ -264,16 +256,15 @@ export default function DashboardPage() {
       {/* 扫楼进度管理 */}
       <SweepStatusVisualization communityId={communityId} />
 
-      {/* 各轮投票进度 */}
-      <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+      <div className="bg-white rounded-xl border border-zinc-200/80 overflow-hidden">
+        <div className="px-5 py-4 border-b border-zinc-100">
           <div className="flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-slate-400" />
-            <h2 className="text-lg font-semibold text-slate-900">各轮投票进度</h2>
+            <BarChart3 className="w-4 h-4 text-zinc-400" />
+            <h2 className="text-[15px] font-medium text-zinc-900">各轮投票进度</h2>
           </div>
         </div>
-        <div className="p-6">
-          <div className="space-y-6">
+        <div className="p-5">
+          <div className="space-y-3">
             {progress.map((round) => {
               const percentage = round.total_owners > 0
                 ? (round.voted_count / round.total_owners) * 100
@@ -289,59 +280,59 @@ export default function DashboardPage() {
               return (
                 <div
                   key={round.round_id}
-                  className={`p-4 rounded-xl border transition-all duration-200 ${
+                  className={`p-4 rounded-lg border transition-colors duration-200 ${
                     isActive
-                      ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200'
-                      : 'bg-slate-50/50 border-slate-200/60 hover:bg-slate-50'
+                      ? 'bg-blue-50/50 border-blue-200'
+                      : 'bg-zinc-50/50 border-zinc-200/60 hover:border-zinc-300'
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <span className={`font-semibold ${isActive ? 'text-blue-900' : 'text-slate-700'}`}>
+                  <div className="flex items-center justify-between mb-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[14px] font-medium ${isActive ? 'text-zinc-900' : 'text-zinc-700'}`}>
                         {round.round_name}
                       </span>
                       <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium ${
                           isActive
                             ? 'bg-emerald-100 text-emerald-700'
                             : round.status === 'closed'
-                            ? 'bg-slate-200 text-slate-600'
+                            ? 'bg-zinc-200 text-zinc-600'
                             : 'bg-amber-100 text-amber-700'
                         }`}
                       >
                         {isActive ? '进行中' : round.status === 'closed' ? '已结束' : '草稿'}
                       </span>
                     </div>
-                    <div className={`text-sm ${isActive ? 'text-blue-700' : 'text-slate-600'}`}>
-                      <span className="font-semibold">{round.voted_count}</span> / {round.total_owners} 户
-                      <span className="ml-2 text-xs">({percentage.toFixed(1)}%)</span>
+                    <div className={`text-[13px] ${isActive ? 'text-zinc-700' : 'text-zinc-500'}`}>
+                      <span className="font-medium">{round.voted_count}</span> / {round.total_owners} 户
+                      <span className="ml-1.5 text-[11px] text-zinc-400">({percentage.toFixed(1)}%)</span>
                     </div>
                   </div>
 
-                  <div className="relative h-3 bg-white/80 rounded-full overflow-hidden shadow-inner">
+                  <div className="relative h-1.5 bg-white rounded-full overflow-hidden">
                     <div
-                      className={`absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out ${
+                      className={`absolute inset-y-0 left-0 rounded-full transition-all duration-500 ease-out ${
                         isActive
-                          ? 'bg-gradient-to-r from-blue-400 to-blue-500'
-                          : 'bg-gradient-to-r from-slate-300 to-slate-400'
+                          ? 'bg-blue-500'
+                          : 'bg-zinc-400'
                       }`}
                       style={{ width: `${percentage}%` }}
                     />
                   </div>
 
-                  <div className="flex justify-between mt-2 text-xs text-slate-500">
-                    <span>面积投票率: <span className="font-medium">{areaPercentage.toFixed(1)}%</span> (总面积 {formatArea(roundTotalArea)})</span>
-                    <span>已投票面积: <span className="font-medium">{formatArea(roundVotedArea)}</span></span>
+                  <div className="flex justify-between mt-2 text-[11px] text-zinc-400">
+                    <span>面积投票率: <span className="font-medium text-zinc-500">{areaPercentage.toFixed(1)}%</span> · 总面积 {formatArea(roundTotalArea)}</span>
+                    <span>已投票面积: <span className="font-medium text-zinc-500">{formatArea(roundVotedArea)}</span></span>
                   </div>
                 </div>
               );
             })}
             {progress.length === 0 && (
-              <div className="flex flex-col items-center py-12">
-                <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-3">
-                  <Vote className="w-8 h-8 text-slate-400" />
+              <div className="flex flex-col items-center py-10">
+                <div className="w-12 h-12 rounded-lg bg-zinc-100 flex items-center justify-center mb-2">
+                  <Vote className="w-5 h-5 text-zinc-400" />
                 </div>
-                <p className="text-slate-500">暂无投票轮次</p>
+                <p className="text-[13px] text-zinc-400">暂无投票轮次</p>
               </div>
             )}
           </div>

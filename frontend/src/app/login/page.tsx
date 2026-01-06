@@ -31,47 +31,38 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4 relative overflow-hidden">
-      {/* 背景装饰 */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" />
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" style={{ animationDelay: '1s' }} />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-indigo-500 rounded-full mix-blend-multiply filter blur-3xl opacity-10" />
-      </div>
-
-      <div className="w-full max-w-md relative">
-        {/* Logo */}
+    <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl mb-6 shadow-2xl shadow-blue-500/30 transform hover:scale-105 transition-transform duration-300">
-            <Vote className="w-10 h-10 text-white" />
+          <div className="inline-flex items-center justify-center w-12 h-12 bg-zinc-900 rounded-xl mb-5">
+            <Vote className="w-6 h-6 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">业主大会投票管理系统</h1>
-          <p className="text-blue-200/70">请登录您的账户以继续</p>
+          <h1 className="text-xl font-semibold text-zinc-900 tracking-tight">业主大会投票管理系统</h1>
+          <p className="text-[13px] text-zinc-500 mt-1">请登录您的账户以继续</p>
         </div>
 
-        {/* 登录表单 */}
-        <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-white/20">
-          <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="bg-white rounded-xl border border-zinc-200 p-6">
+          <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="bg-red-500/10 border border-red-500/30 text-red-200 px-4 py-3 rounded-xl text-sm flex items-center gap-3 animate-in slide-in-from-top-2">
-                <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <div className="bg-red-50 border border-red-200 text-red-600 px-3 py-2.5 rounded-lg text-[13px] flex items-center gap-2.5 animate-fade-in">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
                 <span>{error}</span>
               </div>
             )}
 
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-blue-100">
+            <div className="space-y-1.5">
+              <label className="block text-[13px] font-medium text-zinc-700">
                 用户名
               </label>
               <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <User className="w-5 h-5 text-slate-400 group-focus-within:text-blue-400 transition-colors" />
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <User className="w-4 h-4 text-zinc-400 group-focus-within:text-zinc-600 transition-colors" />
                 </div>
                 <input
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full pl-12 pr-4 py-3.5 bg-white/10 border border-white/20 rounded-xl text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 focus:bg-white/15 outline-none transition-all duration-200"
+                  className="w-full pl-10 pr-3 py-2.5 bg-white border border-zinc-200 rounded-lg text-zinc-900 placeholder-zinc-400 text-[14px] focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all duration-200"
                   placeholder="请输入用户名"
                   required
                   autoComplete="username"
@@ -79,19 +70,19 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-blue-100">
+            <div className="space-y-1.5">
+              <label className="block text-[13px] font-medium text-zinc-700">
                 密码
               </label>
               <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Lock className="w-5 h-5 text-slate-400 group-focus-within:text-blue-400 transition-colors" />
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Lock className="w-4 h-4 text-zinc-400 group-focus-within:text-zinc-600 transition-colors" />
                 </div>
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-12 pr-14 py-3.5 bg-white/10 border border-white/20 rounded-xl text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 focus:bg-white/15 outline-none transition-all duration-200"
+                  className="w-full pl-10 pr-10 py-2.5 bg-white border border-zinc-200 rounded-lg text-zinc-900 placeholder-zinc-400 text-[14px] focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all duration-200"
                   placeholder="请输入密码"
                   required
                   autoComplete="current-password"
@@ -99,12 +90,12 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors p-1"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 transition-colors"
                 >
                   {showPassword ? (
-                    <EyeOff className="w-5 h-5" />
+                    <EyeOff className="w-4 h-4" />
                   ) : (
-                    <Eye className="w-5 h-5" />
+                    <Eye className="w-4 h-4" />
                   )}
                 </button>
               </div>
@@ -113,11 +104,11 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-4 px-4 rounded-xl font-semibold hover:from-blue-600 hover:to-blue-700 focus:ring-4 focus:ring-blue-500/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 transform hover:-translate-y-0.5 active:translate-y-0"
+              className="w-full bg-zinc-900 text-white py-2.5 px-4 rounded-lg text-[14px] font-medium hover:bg-zinc-800 focus:ring-2 focus:ring-zinc-900/20 focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
-                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin" />
                   登录中...
                 </span>
               ) : (
@@ -125,11 +116,9 @@ export default function LoginPage() {
               )}
             </button>
           </form>
-
         </div>
 
-        {/* 底部版权 */}
-        <p className="text-center text-sm text-slate-500 mt-8">
+        <p className="text-center text-[12px] text-zinc-400 mt-6">
           业主大会投票管理系统 &copy; 2026
         </p>
       </div>
