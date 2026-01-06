@@ -10,6 +10,7 @@ const {
   canManageCommunity
 } = require('../middleware/auth');
 const { createLogger, Actions, Modules } = require('../utils/logger');
+const { validateIdParam, validateRequiredFields } = require('../utils/validators');
 
 const router = express.Router();
 
@@ -43,9 +44,9 @@ router.get('/', authMiddleware, async (req, res) => {
 });
 
 // 获取单个小区详情
-router.get('/:id', authMiddleware, async (req, res) => {
+router.get('/:id', authMiddleware, validateIdParam('id'), async (req, res) => {
   try {
-    const communityId = parseInt(req.params.id);
+    const communityId = req.params.id;
 
     // 检查访问权限
     if (!canAccessCommunity(req.user, communityId)) {
@@ -82,13 +83,9 @@ router.get('/:id', authMiddleware, async (req, res) => {
 });
 
 // 创建小区（仅超级管理员）
-router.post('/', authMiddleware, superAdminMiddleware, async (req, res) => {
+router.post('/', authMiddleware, superAdminMiddleware, validateRequiredFields(['name'], { message: '小区名称不能为空' }), async (req, res) => {
   try {
     const { name, address, description } = req.body;
-
-    if (!name) {
-      return res.status(400).json({ error: '小区名称不能为空' });
-    }
 
     const [result] = await pool.query(
       'INSERT INTO communities (name, address, description) VALUES (?, ?, ?)',
@@ -117,9 +114,9 @@ router.post('/', authMiddleware, superAdminMiddleware, async (req, res) => {
 });
 
 // 更新小区（超级管理员或本小区管理员）
-router.put('/:id', authMiddleware, adminMiddleware, async (req, res) => {
+router.put('/:id', authMiddleware, adminMiddleware, validateIdParam('id'), async (req, res) => {
   try {
-    const communityId = parseInt(req.params.id);
+    const communityId = req.params.id;
 
     // 检查管理权限
     if (!canManageCommunity(req.user, communityId)) {
@@ -154,9 +151,9 @@ router.put('/:id', authMiddleware, adminMiddleware, async (req, res) => {
 });
 
 // 删除小区（仅超级管理员）
-router.delete('/:id', authMiddleware, superAdminMiddleware, async (req, res) => {
+router.delete('/:id', authMiddleware, superAdminMiddleware, validateIdParam('id'), async (req, res) => {
   try {
-    const communityId = parseInt(req.params.id);
+    const communityId = req.params.id;
 
     // 获取要删除的小区信息（用于日志）
     const [communities] = await pool.query('SELECT name FROM communities WHERE id = ?', [communityId]);
@@ -190,9 +187,9 @@ router.delete('/:id', authMiddleware, superAdminMiddleware, async (req, res) => 
 // ===== 期数管理 =====
 
 // 获取小区的所有期数
-router.get('/:communityId/phases', authMiddleware, async (req, res) => {
+router.get('/:communityId/phases', authMiddleware, validateIdParam('communityId'), async (req, res) => {
   try {
-    const communityId = parseInt(req.params.communityId);
+    const communityId = req.params.communityId;
 
     // 检查访问权限
     if (!canAccessCommunity(req.user, communityId)) {
@@ -216,9 +213,9 @@ router.get('/:communityId/phases', authMiddleware, async (req, res) => {
 });
 
 // 创建期数（管理员可操作）
-router.post('/:communityId/phases', authMiddleware, adminMiddleware, async (req, res) => {
+router.post('/:communityId/phases', authMiddleware, adminMiddleware, validateIdParam('communityId'), validateRequiredFields(['name', 'code'], { message: '期数名称和代码不能为空' }), async (req, res) => {
   try {
-    const communityId = parseInt(req.params.communityId);
+    const communityId = req.params.communityId;
 
     // 检查管理权限
     if (!canManageCommunity(req.user, communityId)) {
@@ -226,10 +223,6 @@ router.post('/:communityId/phases', authMiddleware, adminMiddleware, async (req,
     }
 
     const { name, code, description } = req.body;
-
-    if (!name || !code) {
-      return res.status(400).json({ error: '期数名称和代码不能为空' });
-    }
 
     const [result] = await pool.query(
       'INSERT INTO phases (community_id, name, code, description) VALUES (?, ?, ?, ?)',
@@ -262,9 +255,9 @@ router.post('/:communityId/phases', authMiddleware, adminMiddleware, async (req,
 });
 
 // 更新期数（管理员可操作）
-router.put('/phases/:id', authMiddleware, adminMiddleware, async (req, res) => {
+router.put('/phases/:id', authMiddleware, adminMiddleware, validateIdParam('id'), async (req, res) => {
   try {
-    const phaseId = parseInt(req.params.id);
+    const phaseId = req.params.id;
 
     // 获取期数所属小区
     const [phases] = await pool.query('SELECT community_id FROM phases WHERE id = ?', [phaseId]);
@@ -306,9 +299,9 @@ router.put('/phases/:id', authMiddleware, adminMiddleware, async (req, res) => {
 });
 
 // 删除期数（管理员可操作）
-router.delete('/phases/:id', authMiddleware, adminMiddleware, async (req, res) => {
+router.delete('/phases/:id', authMiddleware, adminMiddleware, validateIdParam('id'), async (req, res) => {
   try {
-    const phaseId = parseInt(req.params.id);
+    const phaseId = req.params.id;
 
     // 获取期数信息（包含所属小区）
     const [phases] = await pool.query('SELECT name, code, community_id FROM phases WHERE id = ?', [phaseId]);

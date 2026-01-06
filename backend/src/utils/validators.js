@@ -14,7 +14,7 @@ function validateIdParam(paramName) {
   };
 }
 
-function validateRequiredFields(requiredFields) {
+function validateRequiredFields(requiredFields, options = {}) {
   return (req, res, next) => {
     const missingFields = requiredFields.filter(field => {
       const value = req.body[field];
@@ -23,7 +23,7 @@ function validateRequiredFields(requiredFields) {
 
     if (missingFields.length > 0) {
       return res.status(400).json({
-        error: `缺少必填字段: ${missingFields.join(', ')}`
+        error: options.message || `缺少必填字段: ${missingFields.join(', ')}`
       });
     }
 

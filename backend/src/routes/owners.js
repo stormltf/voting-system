@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 const express = require('express');
 const multer = require('multer');
-const XLSX = require('xlsx');
+const ExcelJS = require('exceljs');
 const { pool } = require('../models/db');
 const {
   authMiddleware,
@@ -224,8 +224,7 @@ router.get('/export', authMiddleware, async (req, res) => {
       'voted': '已投票',
       'onsite': '现场投票',
       'video': '视频投票',
-      'refused': '拒绝',
-      'sweep': '扫楼中'
+      'refused': '拒绝'
     };
 
     // 转换为 Excel 格式
@@ -261,44 +260,45 @@ router.get('/export', authMiddleware, async (req, res) => {
       return row;
     });
 
-    // 创建工作簿
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(excelData);
+    // 创建工作簿（使用 exceljs，避免 xlsx 已知漏洞）
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('业主数据');
 
-    // 设置列宽
-    ws['!cols'] = [
-      { wch: 6 },   // 序号
-      { wch: 15 },  // 小区
-      { wch: 10 },  // 期数
-      { wch: 15 },  // 房间号
-      { wch: 8 },   // 楼栋
-      { wch: 8 },   // 单元
-      { wch: 8 },   // 房号
-      { wch: 12 },  // 业主姓名
-      { wch: 10 },  // 面积
-      { wch: 12 },  // 车位号
-      { wch: 10 },  // 车位面积
-      { wch: 15 },  // 联系电话1
-      { wch: 15 },  // 联系电话2
-      { wch: 15 },  // 联系电话3
-      { wch: 10 },  // 群状态
-      { wch: 12 },  // 微信沟通人
-      { wch: 10 },  // 房屋状态
+    const columns = [
+      { header: '序号', key: '序号', width: 6 },
+      { header: '小区', key: '小区', width: 15 },
+      { header: '期数', key: '期数', width: 10 },
+      { header: '房间号', key: '房间号', width: 15 },
+      { header: '楼栋', key: '楼栋', width: 8 },
+      { header: '单元', key: '单元', width: 8 },
+      { header: '房号', key: '房号', width: 8 },
+      { header: '业主姓名', key: '业主姓名', width: 12 },
+      { header: '面积', key: '面积', width: 10 },
+      { header: '车位号', key: '车位号', width: 12 },
+      { header: '车位面积', key: '车位面积', width: 10 },
+      { header: '联系电话1', key: '联系电话1', width: 15 },
+      { header: '联系电话2', key: '联系电话2', width: 15 },
+      { header: '联系电话3', key: '联系电话3', width: 15 },
+      { header: '群状态', key: '群状态', width: 10 },
+      { header: '微信沟通人', key: '微信沟通人', width: 12 },
+      { header: '房屋状态', key: '房屋状态', width: 10 },
     ];
 
     if (round_id) {
-      ws['!cols'].push(
-        { wch: 10 },  // 投票状态
-        { wch: 12 },  // 投票日期
-        { wch: 15 },  // 扫楼状态
-        { wch: 20 },  // 投票备注
+      columns.push(
+        { header: '投票状态', key: '投票状态', width: 10 },
+        { header: '投票日期', key: '投票日期', width: 12 },
+        { header: '扫楼状态', key: '扫楼状态', width: 15 },
+        { header: '投票备注', key: '投票备注', width: 20 },
       );
     }
 
-    XLSX.utils.book_append_sheet(wb, ws, '业主数据');
+    ws.columns = columns;
+    for (const row of excelData) {
+      ws.addRow(row);
+    }
 
-    // 生成 buffer
-    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const buffer = Buffer.from(await wb.xlsx.writeBuffer());
 
     // 设置响应头
     const filename = encodeURIComponent(`业主数据_${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -511,15 +511,10 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
       return res.status(400).json({ error: '请上传文件' });
     }
 
-    // 验证文件类型
-    const validMimeTypes = [
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-excel'
-    ];
+    // 验证文件类型（出于安全考虑仅支持 .xlsx）
     const fileExtension = req.file.originalname.split('.').pop().toLowerCase();
-
-    if (!validMimeTypes.includes(req.file.mimetype) && !['xlsx', 'xls'].includes(fileExtension)) {
-      return res.status(400).json({ error: '请上传有效的 Excel 文件 (.xlsx 或 .xls)' });
+    if (fileExtension !== 'xlsx') {
+      return res.status(400).json({ error: '请上传有效的 Excel 文件 (.xlsx)' });
     }
 
     const { phase_id } = req.body;
@@ -536,11 +531,29 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
       return res.status(403).json({ error: '无权管理该小区数据' });
     }
 
-    // 解析 Excel 文件
-    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    const data = XLSX.utils.sheet_to_json(sheet);
+    // 解析 Excel 文件（exceljs）
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(req.file.buffer);
+    const sheet = workbook.worksheets[0];
+    if (!sheet || sheet.rowCount < 2) {
+      return res.status(400).json({ error: '文件中没有数据' });
+    }
+
+    const headers = (sheet.getRow(1).values || []).slice(1).map(v => String(v || '').trim());
+    const data = [];
+    for (let r = 2; r <= sheet.rowCount; r++) {
+      const row = sheet.getRow(r);
+      if (!row || !row.values || row.values.length <= 1) continue;
+      const obj = {};
+      for (let c = 1; c <= headers.length; c++) {
+        const key = headers[c - 1];
+        if (!key) continue;
+        const cellValue = row.getCell(c).value;
+        if (cellValue === null || cellValue === undefined || cellValue === '') continue;
+        obj[key] = typeof cellValue === 'object' && cellValue.text ? cellValue.text : cellValue;
+      }
+      if (Object.keys(obj).length > 0) data.push(obj);
+    }
 
     if (data.length === 0) {
       return res.status(400).json({ error: '文件中没有数据' });
@@ -678,7 +691,7 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
     });
   } catch (error) {
     console.error('导入业主数据错误:', error);
-    res.status(500).json({ error: '服务器错误: ' + error.message });
+    res.status(500).json({ error: '服务器错误' });
   }
 });
 

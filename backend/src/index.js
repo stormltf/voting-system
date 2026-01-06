@@ -4,6 +4,7 @@ const cors = require('cors');
 require('dotenv').config();
 
 const { testConnection } = require('./models/db');
+const errorMiddleware = require('./middleware/error');
 const authRoutes = require('./routes/auth');
 const communitiesRoutes = require('./routes/communities');
 const ownersRoutes = require('./routes/owners');
@@ -16,28 +17,33 @@ const PORT = process.env.PORT || 8081;
 // CORS 配置
 const corsOptions = {
   origin: function (origin, callback) {
-    // 允许的域名列表
+    const frontendUrl = process.env.FRONTEND_URL;
+    const isDev = process.env.NODE_ENV !== 'production';
+
+    // 基础允许列表
     const allowedOrigins = [
       'http://localhost:8080',
-      'https://voting-frontend-n2p2.onrender.com',  // Render 前端
-      process.env.FRONTEND_URL,  // 自定义前端 URL
+      'https://voting-frontend-n2p2.onrender.com',
+      frontendUrl,
     ].filter(Boolean);
 
-    // 允许无 origin 的请求（如 Postman、curl）
+    // 1. 允许无 origin (Postman/Curl) 或 在显式白名单中
     if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      // 允许本地 IP 访问（用于移动端测试）
-      if (origin && origin.match(/^http:\/\/(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/)) {
-        callback(null, true);
-      }
-      // 生产环境也允许 Render 的域名
-      else if (origin && (origin.endsWith('.onrender.com') || origin.endsWith('.vercel.app'))) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
+      return callback(null, true);
     }
+
+    // 2. 开发环境下允许本地 IP (移动端测试)
+    if (isDev && origin.match(/^http:\/\/(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/)) {
+      return callback(null, true);
+    }
+
+    // 3. 只有在未配置 FRONTEND_URL 且非生产环境时，才回退到允许所有 Render/Vercel 域名
+    // 生产环境必须显式指定 FRONTEND_URL 或使用上述硬编码白名单
+    if (!frontendUrl && !isDev && (origin.endsWith('.onrender.com') || origin.endsWith('.vercel.app'))) {
+      return callback(null, true);
+    }
+
+    callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -73,10 +79,7 @@ app.use((req, res) => {
 });
 
 // 错误处理
-app.use((err, req, res, _next) => {
-  console.error('服务器错误:', err);
-  res.status(500).json({ error: '服务器内部错误' });
-});
+app.use(errorMiddleware);
 
 // 启动服务器
 async function start() {

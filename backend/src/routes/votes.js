@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 const express = require('express');
 const multer = require('multer');
-const XLSX = require('xlsx');
+const ExcelJS = require('exceljs');
 const { pool } = require('../models/db');
 const {
   authMiddleware,
@@ -506,15 +506,10 @@ router.post('/import', authMiddleware, adminMiddleware, (req, res, next) => {
       return res.status(400).json({ error: '请上传文件' });
     }
 
-    // 验证文件类型
-    const validMimeTypes = [
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-excel'
-    ];
+    // 验证文件类型（出于安全考虑仅支持 .xlsx）
     const fileExtension = req.file.originalname.split('.').pop().toLowerCase();
-
-    if (!validMimeTypes.includes(req.file.mimetype) && !['xlsx', 'xls'].includes(fileExtension)) {
-      return res.status(400).json({ error: '请上传有效的 Excel 文件 (.xlsx 或 .xls)' });
+    if (fileExtension !== 'xlsx') {
+      return res.status(400).json({ error: '请上传有效的 Excel 文件 (.xlsx)' });
     }
 
     if (!round_id || !community_id) {
@@ -526,17 +521,15 @@ router.post('/import', authMiddleware, adminMiddleware, (req, res, next) => {
       return res.status(403).json({ error: '无权管理该小区' });
     }
 
-    // Parse Excel
-    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-
-    if (data.length < 2) {
+    // Parse Excel (exceljs)
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(req.file.buffer);
+    const sheet = workbook.worksheets[0];
+    if (!sheet || sheet.rowCount < 2) {
       return res.status(400).json({ error: 'Excel 文件为空或格式错误' });
     }
 
-    const headers = data[0];
+    const headers = (sheet.getRow(1).values || []).slice(1).map(v => String(v || '').trim());
 
     // Find Room Column
     const roomColIndex = headers.findIndex(h =>
@@ -583,14 +576,24 @@ router.post('/import', authMiddleware, adminMiddleware, (req, res, next) => {
     let pendingCount = 0;
     let notFoundCount = 0;
 
-    for (let i = 1; i < data.length; i++) {
-      const row = data[i];
-      if (!row || !row[roomColIndex]) continue;
+    for (let r = 2; r <= sheet.rowCount; r++) {
+      const row = sheet.getRow(r);
+      if (!row || !row.values || row.values.length <= 1) continue;
 
-      const roomNumber = String(row[roomColIndex]).trim();
-      const voteValue = row[voteColIndex];
-      const remark = remarkColIndex >= 0 ? row[remarkColIndex] : null;
-      const sweepStatus = sweepColIndex >= 0 ? row[sweepColIndex] : null;
+      const getCellValue = (idx) => {
+        if (idx === -1) return null;
+        const cell = row.getCell(idx + 1);
+        const val = cell.value;
+        return (typeof val === 'object' && val.text) ? val.text : val;
+      };
+
+      const roomValue = getCellValue(roomColIndex);
+      if (!roomValue) continue;
+
+      const roomNumber = String(roomValue).trim();
+      const voteValue = getCellValue(voteColIndex);
+      const remark = getCellValue(remarkColIndex);
+      const sweepStatus = getCellValue(sweepColIndex);
 
       const normalizedRoom = roomNumber.replace(/[\s-]/g, '');
       const ownerId = roomToOwnerId[normalizedRoom] || roomToOwnerId[roomNumber];
@@ -606,13 +609,18 @@ router.post('/import', authMiddleware, adminMiddleware, (req, res, next) => {
       const voteStatus = (voteValue === 1 || voteValue === '1' || voteValue === '是') ? 'voted' : 'pending';
       if (voteStatus === 'voted') votedCount++; else pendingCount++;
 
-      // [ownerId, roundId, voteStatus, remark, sweepStatus]
+      // [ownerId, roundId, voteStatus, remark, sweepStatus, sweepRemark, sweepDate]
+      const sweepRemark = sweepStatus ? (remark || '从 Excel 导入') : null;
+      const sweepDate = sweepStatus ? new Date().toISOString().slice(0, 10) : null;
+
       bulkData.push([
         ownerId,
         round_id,
         voteStatus,
         remark || null,
-        sweepStatus || null
+        sweepStatus || null,
+        sweepRemark,
+        sweepDate
       ]);
     }
 
@@ -623,12 +631,14 @@ router.post('/import', authMiddleware, adminMiddleware, (req, res, next) => {
         const batch = bulkData.slice(i, i + BATCH_SIZE);
 
         await pool.query(`
-          INSERT INTO votes (owner_id, round_id, vote_status, remark, sweep_status)
+          INSERT INTO votes (owner_id, round_id, vote_status, remark, sweep_status, sweep_remark, sweep_date)
           VALUES ?
           ON DUPLICATE KEY UPDATE
             vote_status = VALUES(vote_status),
-            remark = COALESCE(VALUES(remark), remark),
-            sweep_status = COALESCE(VALUES(sweep_status), sweep_status)
+            remark = VALUES(remark),
+            sweep_status = VALUES(sweep_status),
+            sweep_remark = VALUES(sweep_remark),
+            sweep_date = VALUES(sweep_date)
         `, [batch]);
       }
     }
@@ -651,7 +661,7 @@ router.post('/import', authMiddleware, adminMiddleware, (req, res, next) => {
     });
   } catch (error) {
     console.error('导入投票记录错误:', error);
-    res.status(500).json({ error: '服务器错误: ' + error.message });
+    res.status(500).json({ error: '服务器错误' });
   }
 });
 
@@ -740,8 +750,7 @@ router.get('/export', authMiddleware, async (req, res) => {
       'voted': '已投票',
       'onsite': '现场投票',
       'video': '视频投票',
-      'refused': '拒绝',
-      'sweep': '扫楼中'
+      'refused': '拒绝'
     };
 
     // 转换为 Excel 格式
@@ -767,39 +776,38 @@ router.get('/export', authMiddleware, async (req, res) => {
       '备注': record.remark || '',
     }));
 
-    // 创建工作簿
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(excelData);
+    // 创建工作簿（exceljs）
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('投票记录');
 
-    // 设置列宽
-    ws['!cols'] = [
-      { wch: 6 },   // 序号
-      { wch: 15 },  // 小区
-      { wch: 10 },  // 期数
-      { wch: 15 },  // 房间号
-      { wch: 8 },   // 楼栋
-      { wch: 8 },   // 单元
-      { wch: 8 },   // 房号
-      { wch: 12 },  // 业主姓名
-      { wch: 10 },  // 面积
-      { wch: 12 },  // 车位号
-      { wch: 10 },  // 车位面积
-      { wch: 15 },  // 联系电话1
-      { wch: 15 },  // 联系电话2
-      { wch: 15 },  // 联系电话3
-      { wch: 10 },  // 投票状态
-      { wch: 15 },  // 投票电话
-      { wch: 12 },  // 投票日期
-      { wch: 15 },  // 扫楼状态
-      { wch: 25 },  // 备注
+    ws.columns = [
+      { header: '序号', key: '序号', width: 6 },
+      { header: '小区', key: '小区', width: 15 },
+      { header: '期数', key: '期数', width: 10 },
+      { header: '房间号', key: '房间号', width: 15 },
+      { header: '楼栋', key: '楼栋', width: 8 },
+      { header: '单元', key: '单元', width: 8 },
+      { header: '房号', key: '房号', width: 8 },
+      { header: '业主姓名', key: '业主姓名', width: 12 },
+      { header: '面积', key: '面积', width: 10 },
+      { header: '车位号', key: '车位号', width: 12 },
+      { header: '车位面积', key: '车位面积', width: 10 },
+      { header: '联系电话1', key: '联系电话1', width: 15 },
+      { header: '联系电话2', key: '联系电话2', width: 15 },
+      { header: '联系电话3', key: '联系电话3', width: 15 },
+      { header: '投票状态', key: '投票状态', width: 10 },
+      { header: '投票电话', key: '投票电话', width: 15 },
+      { header: '投票日期', key: '投票日期', width: 12 },
+      { header: '扫楼状态', key: '扫楼状态', width: 15 },
+      { header: '备注', key: '备注', width: 25 },
     ];
 
-    // 获取轮次名称用于文件名
-    const roundName = records[0]?.round_name || '投票';
-    XLSX.utils.book_append_sheet(wb, ws, '投票记录');
+    for (const row of excelData) {
+      ws.addRow(row);
+    }
 
-    // 生成 buffer
-    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const buffer = Buffer.from(await wb.xlsx.writeBuffer());
+    const roundName = records[0]?.round_name || '投票';
 
     // 设置响应头
     const filename = encodeURIComponent(`${roundName}_投票记录_${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -1204,8 +1212,8 @@ router.get('/sweep-unit-rooms', authMiddleware, async (req, res) => {
         o.area,
         o.parking_no,
         COALESCE(v.sweep_status, 'pending') as sweep_status,
-        v.remark as sweep_remark,
-        v.updated_at as sweep_date,
+        v.sweep_remark,
+        v.sweep_date,
         v.vote_status,
         p.name as phase_name,
         r.name as round_name
@@ -1343,11 +1351,12 @@ router.put('/sweep/:ownerId', authMiddleware, adminMiddleware, async (req, res) 
 
     // 更新votes表的sweep_status（如果记录不存在则创建）
     await pool.query(`
-      INSERT INTO votes (owner_id, round_id, sweep_status, remark)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO votes (owner_id, round_id, sweep_status, sweep_remark, sweep_date)
+      VALUES (?, ?, ?, ?, CURDATE())
       ON DUPLICATE KEY UPDATE
         sweep_status = VALUES(sweep_status),
-        remark = COALESCE(VALUES(remark), remark)
+        sweep_remark = COALESCE(VALUES(sweep_remark), sweep_remark),
+        sweep_date = CURDATE()
     `, [ownerId, round_id, sweep_status, sweep_remark]);
 
     // 记录日志
@@ -1389,12 +1398,14 @@ router.put('/sweep-batch', authMiddleware, adminMiddleware, async (req, res) => 
     }
 
     // 批量更新votes表
-    const values = owner_ids.map(id => [id, round_id, sweep_status]);
+    const today = new Date().toISOString().slice(0, 10);
+    const values = owner_ids.map(id => [id, round_id, sweep_status, today]);
     await pool.query(`
-      INSERT INTO votes (owner_id, round_id, sweep_status)
+      INSERT INTO votes (owner_id, round_id, sweep_status, sweep_date)
       VALUES ?
       ON DUPLICATE KEY UPDATE
-        sweep_status = VALUES(sweep_status)
+        sweep_status = VALUES(sweep_status),
+        sweep_date = VALUES(sweep_date)
     `, [values]);
 
     // 记录日志

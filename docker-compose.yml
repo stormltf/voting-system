@@ -1,5 +1,13 @@
 version: '3.8'
 
+# ==================== SECURITY WARNING ====================
+# This file contains DEFAULT credentials for development only.
+# For PRODUCTION deployment:
+#   1. Create a .env file with strong, unique passwords
+#   2. NEVER use the default values (voting123, etc.)
+#   3. See SECURITY.md for more details
+# ==========================================================
+
 services:
   # MySQL 数据库
   mysql:

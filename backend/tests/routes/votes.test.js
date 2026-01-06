@@ -1,5 +1,5 @@
 const request = require('supertest');
-const XLSX = require('xlsx');
+const ExcelJS = require('exceljs');
 
 // Mock 数据库模块
 jest.mock('../../src/models/db', () => require('../mocks/db'));
@@ -9,11 +9,28 @@ const { generateToken, ROLES } = require('../../src/middleware/auth');
 const { app } = require('../../src/index');
 
 // Helper function to create Excel buffer for testing
-function createExcelBuffer(data, sheetName = 'Sheet1') {
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_array ? XLSX.utils.aoa_to_arr(data) : XLSX.utils.aoa_to_sheet(data);
-  XLSX.utils.book_append_sheet(wb, ws, sheetName);
-  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+async function createExcelBuffer(data, sheetName = 'Sheet1') {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(sheetName);
+
+  if (!Array.isArray(data) || data.length === 0) {
+    ws.addRow(['占位']);
+  } else {
+    // Determine headers from data (either array of arrays or array of objects)
+    if (Array.isArray(data[0])) {
+      for (const row of data) {
+        ws.addRow(row);
+      }
+    } else {
+      const headers = Object.keys(data[0]);
+      ws.addRow(headers);
+      for (const item of data) {
+        ws.addRow(headers.map(h => item[h]));
+      }
+    }
+  }
+
+  return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
 describe('Votes Routes', () => {
@@ -1291,7 +1308,7 @@ describe('Votes Routes', () => {
 
       it('应该拒绝缺少 round_id 或 community_id', async () => {
         const excelData = [['房间号', '投否'], ['01-01-0101', '是']];
-        const excelBuffer = createExcelBuffer(excelData);
+        const excelBuffer = await createExcelBuffer(excelData);
 
         const response = await request(app)
           .post('/api/votes/import')
@@ -1307,7 +1324,7 @@ describe('Votes Routes', () => {
 
       it('小区管理员不能导入其他小区的数据', async () => {
         const excelData = [['房间号', '投否'], ['01-01-0101', '是']];
-        const excelBuffer = createExcelBuffer(excelData);
+        const excelBuffer = await createExcelBuffer(excelData);
 
         const response = await request(app)
           .post('/api/votes/import')
@@ -1325,7 +1342,7 @@ describe('Votes Routes', () => {
 
       it('应该拒绝空的 Excel 文件', async () => {
         const excelData = [['房间号', '投否']]; // 只有表头，没有数据
-        const excelBuffer = createExcelBuffer(excelData);
+        const excelBuffer = await createExcelBuffer(excelData);
 
         const response = await request(app)
           .post('/api/votes/import')
@@ -1343,7 +1360,7 @@ describe('Votes Routes', () => {
 
       it('应该拒绝没有房间号列的 Excel', async () => {
         const excelData = [['姓名', '投否'], ['张三', '是']];
-        const excelBuffer = createExcelBuffer(excelData);
+        const excelBuffer = await createExcelBuffer(excelData);
 
         const response = await request(app)
           .post('/api/votes/import')
@@ -1361,7 +1378,7 @@ describe('Votes Routes', () => {
 
       it('应该拒绝没有投票状态列的 Excel', async () => {
         const excelData = [['房间号', '姓名'], ['01-01-0101', '张三']];
-        const excelBuffer = createExcelBuffer(excelData);
+        const excelBuffer = await createExcelBuffer(excelData);
 
         const response = await request(app)
           .post('/api/votes/import')
@@ -1384,7 +1401,7 @@ describe('Votes Routes', () => {
           ['01-01-0102', '1', '', ''],
           ['01-01-0103', '否', '', ''],
         ];
-        const excelBuffer = createExcelBuffer(excelData);
+        const excelBuffer = await createExcelBuffer(excelData);
 
         // Mock owners query
         pool.query.mockResolvedValueOnce([[
@@ -1420,7 +1437,7 @@ describe('Votes Routes', () => {
           ['01-01-0101', '是'],
           ['99-99-9999', '是'], // 不存在的房间
         ];
-        const excelBuffer = createExcelBuffer(excelData);
+        const excelBuffer = await createExcelBuffer(excelData);
 
         // Mock owners query - 只有一个房间匹配
         pool.query.mockResolvedValueOnce([[
@@ -1452,7 +1469,7 @@ describe('Votes Routes', () => {
           ['房间号', '自定义投票列'],
           ['01-01-0101', '是'],
         ];
-        const excelBuffer = createExcelBuffer(excelData);
+        const excelBuffer = await createExcelBuffer(excelData);
 
         pool.query.mockResolvedValueOnce([[{ id: 1, room_number: '01-01-0101' }]]);
         pool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
@@ -1482,7 +1499,7 @@ describe('Votes Routes', () => {
           excelData.push([room, '是']);
           mockOwners.push({ id: i, room_number: room });
         }
-        const excelBuffer = createExcelBuffer(excelData);
+        const excelBuffer = await createExcelBuffer(excelData);
 
         pool.query.mockResolvedValueOnce([mockOwners]);
         // 两次批量插入（1000 + 500）
@@ -1509,7 +1526,7 @@ describe('Votes Routes', () => {
           ['房间号', '投否'],
           ['01-01-0101', '是'],
         ];
-        const excelBuffer = createExcelBuffer(excelData);
+        const excelBuffer = await createExcelBuffer(excelData);
 
         pool.query.mockResolvedValueOnce([[{ id: 1, room_number: '01-01-0101' }]]);
         pool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
@@ -1534,7 +1551,7 @@ describe('Votes Routes', () => {
           ['01 01 0101', '是'], // 带空格
           ['02-01-0201', '是'], // 带横线
         ];
-        const excelBuffer = createExcelBuffer(excelData);
+        const excelBuffer = await createExcelBuffer(excelData);
 
         pool.query.mockResolvedValueOnce([[
           { id: 1, room_number: '01-01-0101' },
@@ -1561,7 +1578,7 @@ describe('Votes Routes', () => {
           ['房间号', '投否'],
           ['01-01-0101', '是'],
         ];
-        const excelBuffer = createExcelBuffer(excelData);
+        const excelBuffer = await createExcelBuffer(excelData);
 
         pool.query.mockRejectedValueOnce(new Error('Database error'));
 
@@ -1579,16 +1596,12 @@ describe('Votes Routes', () => {
         expect(response.body.error).toContain('服务器错误');
       });
 
-      it('应该支持 xls 文件扩展名', async () => {
+      it('应该拒绝 xls 文件扩展名', async () => {
         const excelData = [
           ['房间号', '投否'],
           ['01-01-0101', '是'],
         ];
-        const excelBuffer = createExcelBuffer(excelData);
-
-        pool.query.mockResolvedValueOnce([[{ id: 1, room_number: '01-01-0101' }]]);
-        pool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
-        pool.query.mockResolvedValueOnce([{ insertId: 1 }]);
+        const excelBuffer = await createExcelBuffer(excelData);
 
         const response = await request(app)
           .post('/api/votes/import')
@@ -1600,7 +1613,8 @@ describe('Votes Routes', () => {
             contentType: 'application/vnd.ms-excel'
           });
 
-        expect(response.status).toBe(200);
+        expect(response.status).toBe(400);
+        expect(response.body.error).toBe('请上传有效的 Excel 文件 (.xlsx)');
       });
 
       it('应该跳过空行', async () => {
@@ -1611,7 +1625,7 @@ describe('Votes Routes', () => {
           [null, null], // 空行
           ['01-01-0102', '否'],
         ];
-        const excelBuffer = createExcelBuffer(excelData);
+        const excelBuffer = await createExcelBuffer(excelData);
 
         pool.query.mockResolvedValueOnce([[
           { id: 1, room_number: '01-01-0101' },
@@ -1640,7 +1654,7 @@ describe('Votes Routes', () => {
         for (let i = 1; i <= 15; i++) {
           excelData.push([`99-99-${String(i).padStart(4, '0')}`, '是']);
         }
-        const excelBuffer = createExcelBuffer(excelData);
+        const excelBuffer = await createExcelBuffer(excelData);
 
         // 没有匹配的业主
         pool.query.mockResolvedValueOnce([[]]);

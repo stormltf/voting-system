@@ -54,4 +54,4 @@ services:
       - key: NODE_ENV
         value: production
       - key: NEXT_PUBLIC_API_URL
-        value: https://voting-backend-c4zo.onrender.com/api
+        sync: false  # 部署后端后，填入后端 URL（如 https://your-backend.onrender.com/api）

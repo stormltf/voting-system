@@ -1,5 +1,5 @@
 const request = require('supertest');
-const XLSX = require('xlsx');
+const ExcelJS = require('exceljs');
 
 // Mock 数据库模块
 jest.mock('../../src/models/db', () => require('../mocks/db'));
@@ -9,11 +9,21 @@ const { generateToken, ROLES } = require('../../src/middleware/auth');
 const { app } = require('../../src/index');
 
 // Helper function to create Excel buffer for testing
-function createOwnerExcelBuffer(data, sheetName = 'Sheet1') {
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.json_to_sheet(data);
-  XLSX.utils.book_append_sheet(wb, ws, sheetName);
-  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+async function createOwnerExcelBuffer(data, sheetName = 'Sheet1') {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(sheetName);
+
+  if (!Array.isArray(data) || data.length === 0) {
+    ws.addRow(['占位']);
+  } else {
+    const headers = Object.keys(data[0]);
+    ws.addRow(headers);
+    for (const item of data) {
+      ws.addRow(headers.map(h => item[h]));
+    }
+  }
+
+  return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
 describe('Owners Routes', () => {
@@ -809,7 +819,7 @@ describe('Owners Routes', () => {
 
       it('应该拒绝缺少 phase_id', async () => {
         const data = [{ '序号': 1, '房间号': '01-01-0101', '姓名': '张三' }];
-        const excelBuffer = createOwnerExcelBuffer(data);
+        const excelBuffer = await createOwnerExcelBuffer(data);
 
         const response = await request(app)
           .post('/api/owners/import')
@@ -834,12 +844,12 @@ describe('Owners Routes', () => {
           });
 
         expect(response.status).toBe(400);
-        expect(response.body.error).toBe('请上传有效的 Excel 文件 (.xlsx 或 .xls)');
+        expect(response.body.error).toBe('请上传有效的 Excel 文件 (.xlsx)');
       });
 
       it('应该拒绝不存在的期数', async () => {
         const data = [{ '序号': 1, '房间号': '01-01-0101', '姓名': '张三' }];
-        const excelBuffer = createOwnerExcelBuffer(data);
+        const excelBuffer = await createOwnerExcelBuffer(data);
 
         pool.query.mockResolvedValueOnce([[]]); // 期数不存在
 
@@ -858,7 +868,7 @@ describe('Owners Routes', () => {
 
       it('小区管理员不能导入其他小区的数据', async () => {
         const data = [{ '序号': 1, '房间号': '01-01-0101', '姓名': '张三' }];
-        const excelBuffer = createOwnerExcelBuffer(data);
+        const excelBuffer = await createOwnerExcelBuffer(data);
 
         pool.query.mockResolvedValueOnce([[{ id: 1, community_id: 999 }]]); // 其他小区
 
@@ -877,7 +887,7 @@ describe('Owners Routes', () => {
 
       it('应该拒绝空的 Excel 文件', async () => {
         const data = [];
-        const excelBuffer = createOwnerExcelBuffer(data);
+        const excelBuffer = await createOwnerExcelBuffer(data);
 
         pool.query.mockResolvedValueOnce([[{ id: 1, community_id: 1 }]]);
 
@@ -922,7 +932,7 @@ describe('Owners Routes', () => {
             '房屋状态': '出租'
           }
         ];
-        const excelBuffer = createOwnerExcelBuffer(data);
+        const excelBuffer = await createOwnerExcelBuffer(data);
 
         pool.query.mockResolvedValueOnce([[{ id: 1, community_id: 1 }]]); // 期数存在
         pool.query.mockResolvedValueOnce([{ affectedRows: 2 }]); // 批量插入
@@ -948,7 +958,7 @@ describe('Owners Routes', () => {
           { '序号': 2, '姓名': '李四' }, // 缺少房间号
           { '序号': 3, '房间号': '', '姓名': '王五' }, // 房间号为空
         ];
-        const excelBuffer = createOwnerExcelBuffer(data);
+        const excelBuffer = await createOwnerExcelBuffer(data);
 
         pool.query.mockResolvedValueOnce([[{ id: 1, community_id: 1 }]]);
         pool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
@@ -975,7 +985,7 @@ describe('Owners Routes', () => {
           { '序号': 2, '房间号': '0102', '姓名': '李四' }, // 简单格式
           { '序号': 3, '房间号': '01-02-03-04', '姓名': '王五' }, // 多段格式
         ];
-        const excelBuffer = createOwnerExcelBuffer(data);
+        const excelBuffer = await createOwnerExcelBuffer(data);
 
         pool.query.mockResolvedValueOnce([[{ id: 1, community_id: 1 }]]);
         pool.query.mockResolvedValueOnce([{ affectedRows: 3 }]);
@@ -998,7 +1008,7 @@ describe('Owners Routes', () => {
         const data = [
           { '序号': 1, '房间号': '01-01-0101', '姓名': '张三', '面积': '100.5+' },
         ];
-        const excelBuffer = createOwnerExcelBuffer(data);
+        const excelBuffer = await createOwnerExcelBuffer(data);
 
         pool.query.mockResolvedValueOnce([[{ id: 1, community_id: 1 }]]);
         pool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
@@ -1026,7 +1036,7 @@ describe('Owners Routes', () => {
             '姓名': `业主${i}`
           });
         }
-        const excelBuffer = createOwnerExcelBuffer(data);
+        const excelBuffer = await createOwnerExcelBuffer(data);
 
         pool.query.mockResolvedValueOnce([[{ id: 1, community_id: 1 }]]);
         pool.query.mockResolvedValueOnce([{ affectedRows: 1000 }]); // 第一批
@@ -1050,7 +1060,7 @@ describe('Owners Routes', () => {
         const data = [
           { '序号': 1, '房间号': '01-01-0101', '姓名': '张三' }
         ];
-        const excelBuffer = createOwnerExcelBuffer(data);
+        const excelBuffer = await createOwnerExcelBuffer(data);
 
         pool.query.mockResolvedValueOnce([[{ id: 1, community_id: 1 }]]); // 本小区
         pool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
@@ -1069,15 +1079,11 @@ describe('Owners Routes', () => {
         expect(response.body.successCount).toBe(1);
       });
 
-      it('应该支持 xls 文件扩展名', async () => {
+      it('应该拒绝 xls 文件扩展名', async () => {
         const data = [
           { '序号': 1, '房间号': '01-01-0101', '姓名': '张三' }
         ];
-        const excelBuffer = createOwnerExcelBuffer(data);
-
-        pool.query.mockResolvedValueOnce([[{ id: 1, community_id: 1 }]]);
-        pool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
-        pool.query.mockResolvedValueOnce([{ insertId: 1 }]);
+        const excelBuffer = await createOwnerExcelBuffer(data);
 
         const response = await request(app)
           .post('/api/owners/import')
@@ -1088,7 +1094,8 @@ describe('Owners Routes', () => {
             contentType: 'application/vnd.ms-excel'
           });
 
-        expect(response.status).toBe(200);
+        expect(response.status).toBe(400);
+        expect(response.body.error).toBe('请上传有效的 Excel 文件 (.xlsx)');
       });
 
       it('应该限制返回的错误数量', async () => {
@@ -1097,7 +1104,7 @@ describe('Owners Routes', () => {
         for (let i = 1; i <= 15; i++) {
           data.push({ '序号': i, '姓名': `业主${i}` });
         }
-        const excelBuffer = createOwnerExcelBuffer(data);
+        const excelBuffer = await createOwnerExcelBuffer(data);
 
         pool.query.mockResolvedValueOnce([[{ id: 1, community_id: 1 }]]);
         pool.query.mockResolvedValueOnce([{ insertId: 1 }]);
@@ -1120,7 +1127,7 @@ describe('Owners Routes', () => {
         const data = [
           { '序号': 1, '房间号': '01-01-0101', '姓名': '张三' }
         ];
-        const excelBuffer = createOwnerExcelBuffer(data);
+        const excelBuffer = await createOwnerExcelBuffer(data);
 
         pool.query.mockRejectedValueOnce(new Error('Database error'));
 
@@ -1154,7 +1161,7 @@ describe('Owners Routes', () => {
             '房屋状态': '自住'
           }
         ];
-        const excelBuffer = createOwnerExcelBuffer(data);
+        const excelBuffer = await createOwnerExcelBuffer(data);
 
         pool.query.mockResolvedValueOnce([[{ id: 1, community_id: 1 }]]);
         pool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
