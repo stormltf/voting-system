@@ -96,9 +96,9 @@ describe('DataTable', () => {
         />
       );
 
-      // 分页信息现在分散在多个元素中
-      expect(screen.getByText('35')).toBeInTheDocument();
-      expect(screen.getByText(/条记录/)).toBeInTheDocument();
+      // 分页信息现在分散在多个元素中（移动端和桌面端各显示一次）
+      expect(screen.getAllByText('35').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText(/条/).length).toBeGreaterThanOrEqual(1);
       // 验证页码显示（当前页 2 和总页数 4）
       expect(screen.getByText('4', { selector: '.text-sm.text-slate-600' })).toBeInTheDocument();
     });
