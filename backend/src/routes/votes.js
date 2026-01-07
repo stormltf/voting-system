@@ -230,7 +230,7 @@ router.delete('/rounds/:id', authMiddleware, adminMiddleware, async (req, res) =
 // 获取投票记录
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const { round_id, phase_id, community_id, vote_status, sweep_status, search, page = 1, limit = 20 } = req.query;
+    const { round_id, phase_id, building, unit, community_id, vote_status, sweep_status, search, page = 1, limit = 20 } = req.query;
     const offset = (page - 1) * limit;
 
     let whereConditions = ['1=1'];
@@ -253,6 +253,16 @@ router.get('/', authMiddleware, async (req, res) => {
     if (phase_id) {
       whereConditions.push('o.phase_id = ?');
       params.push(phase_id);
+    }
+
+    if (building) {
+      whereConditions.push('o.building = ?');
+      params.push(building);
+    }
+
+    if (unit) {
+      whereConditions.push('o.unit = ?');
+      params.push(unit);
     }
 
     if (vote_status) {
@@ -1212,8 +1222,8 @@ router.get('/sweep-unit-rooms', authMiddleware, async (req, res) => {
         o.area,
         o.parking_no,
         COALESCE(v.sweep_status, 'pending') as sweep_status,
-        v.sweep_remark,
-        v.sweep_date,
+        v.remark as sweep_remark,
+        v.updated_at as sweep_date,
         v.vote_status,
         p.name as phase_name,
         r.name as round_name

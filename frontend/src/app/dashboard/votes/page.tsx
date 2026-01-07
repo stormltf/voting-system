@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Edit, Trash2, X, Search, Vote, Calendar, Loader2, CheckCircle2, Users, Upload, RefreshCw, Download } from 'lucide-react';
 import DataTable from '@/components/DataTable';
-import { voteApi, communityApi } from '@/lib/api';
+import { voteApi, communityApi, ownerApi } from '@/lib/api';
 import { cn, roundStatusMap, voteStatusMap, wechatStatusMap, sweepStatusMap, formatDate } from '@/lib/utils';
 
 interface Round {
@@ -55,6 +55,133 @@ interface Phase {
   code: string;
 }
 
+// Mobile card component for votes - Redesigned for better usability
+function VoteMobileCard({
+  vote,
+  isSelected,
+  onSelect,
+  onStatusChange,
+  onSweepChange,
+  onRemarkChange,
+}: {
+  vote: Vote;
+  isSelected: boolean;
+  onSelect: () => void;
+  onStatusChange: (status: VoteStatus) => void;
+  onSweepChange: (status: string) => void;
+  onRemarkChange: (remark: string) => void;
+}) {
+  const isCompleted = vote.vote_status === 'voted' || vote.vote_status === 'onsite' || vote.vote_status === 'video';
+
+  return (
+    <div className={cn(
+      "p-4 transition-all",
+      isSelected && "bg-blue-50/70",
+      isCompleted && !isSelected && "opacity-50"
+    )}>
+      {/* Main row: checkbox + room number (BIG) + status */}
+      <div className="flex items-center gap-3">
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={onSelect}
+          className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 transition-colors cursor-pointer flex-shrink-0"
+        />
+
+        {/* Room number - LARGE and prominent */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline gap-2">
+            <span className="text-xl font-bold text-slate-900">{vote.room_number}</span>
+            <span className="text-sm text-slate-400">{vote.phase_name}</span>
+          </div>
+        </div>
+
+        {/* Status badge - always visible */}
+        <div className={cn(
+          "px-3 py-1.5 rounded-lg text-sm font-medium flex-shrink-0",
+          voteStatusMap[vote.vote_status || 'pending']?.color
+        )}>
+          {voteStatusMap[vote.vote_status || 'pending']?.label}
+        </div>
+      </div>
+
+      {/* Info row: name + phone + area - compact single line */}
+      <div className="mt-2 ml-8 flex items-center gap-3 text-sm">
+        <span className="text-slate-700 font-medium">{vote.owner_name}</span>
+        <span className="text-slate-300">|</span>
+        {vote.phone1 ? (
+          <a href={`tel:${vote.phone1}`} className="text-blue-600 underline">{vote.phone1}</a>
+        ) : (
+          <span className="text-slate-400">无电话</span>
+        )}
+        <span className="text-slate-300">|</span>
+        <span className="text-slate-500">{vote.area ? parseFloat(String(vote.area)).toFixed(0) : '-'}㎡</span>
+      </div>
+
+      {/* Action row: status selects - larger touch targets */}
+      <div className="mt-3 ml-8 flex gap-2">
+        <select
+          value={vote.vote_status || 'pending'}
+          onChange={(e) => {
+            e.stopPropagation();
+            onStatusChange(e.target.value as VoteStatus);
+          }}
+          className={cn(
+            'flex-1 px-3 py-3 rounded-xl text-sm font-medium border-2 cursor-pointer',
+            'bg-white focus:ring-2 focus:ring-blue-500/20 outline-none transition-all',
+            vote.vote_status === 'voted' && 'border-emerald-300',
+            vote.vote_status === 'refused' && 'border-red-300',
+            vote.vote_status === 'onsite' && 'border-blue-300',
+            vote.vote_status === 'video' && 'border-purple-300',
+            (!vote.vote_status || vote.vote_status === 'pending') && 'border-slate-200'
+          )}
+        >
+          {Object.entries(voteStatusMap).map(([key, value]) => (
+            <option key={key} value={key}>
+              {value.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={vote.sweep_status || 'pending'}
+          onChange={(e) => {
+            e.stopPropagation();
+            onSweepChange(e.target.value);
+          }}
+          className={cn(
+            'flex-1 px-3 py-3 rounded-xl text-sm font-medium border-2 cursor-pointer',
+            'bg-white focus:ring-2 focus:ring-blue-500/20 outline-none transition-all',
+            vote.sweep_status === 'completed' && 'border-emerald-300',
+            vote.sweep_status === 'in_progress' && 'border-amber-300',
+            (!vote.sweep_status || vote.sweep_status === 'pending') && 'border-slate-200'
+          )}
+        >
+          {Object.entries(sweepStatusMap).map(([key, value]) => (
+            <option key={key} value={key}>
+              {value.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Remark - expandable on tap */}
+      <div className="mt-2 ml-8">
+        <input
+          type="text"
+          defaultValue={vote.remark || ''}
+          onBlur={(e) => {
+            if (e.target.value !== (vote.remark || '')) {
+              onRemarkChange(e.target.value);
+            }
+          }}
+          className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+          placeholder="添加备注..."
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function VotesPage() {
   const [activeTab, setActiveTab] = useState<'rounds' | 'records'>('records');
   const [rounds, setRounds] = useState<Round[]>([]);
@@ -85,9 +212,13 @@ export default function VotesPage() {
   const [selectedStatus, setSelectedStatus] = useState<string>('');
   const [selectedSweepStatus, setSelectedSweepStatus] = useState<string>('');
   const [selectedPhase, setSelectedPhase] = useState<number | ''>('');
+  const [selectedBuilding, setSelectedBuilding] = useState<string>('');
+  const [selectedUnit, setSelectedUnit] = useState<string>('');
   const [search, setSearch] = useState('');
   const [communityId, setCommunityId] = useState<number | null>(null);
   const [phases, setPhases] = useState<Phase[]>([]);
+  const [buildings, setBuildings] = useState<string[]>([]);
+  const [units, setUnits] = useState<string[]>([]);
 
   // 批量操作
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -101,6 +232,9 @@ export default function VotesPage() {
 
   // 导出状态
   const [exporting, setExporting] = useState(false);
+
+  // 移动端快捷筛选：只看待处理
+  const [showPendingOnly, setShowPendingOnly] = useState(false);
 
 
   useEffect(() => {
@@ -167,6 +301,8 @@ export default function VotesPage() {
         limit?: number;
         round_id: number;
         phase_id?: number;
+        building?: string;
+        unit?: string;
         vote_status?: string;
         sweep_status?: string;
         search?: string;
@@ -176,6 +312,8 @@ export default function VotesPage() {
         round_id: selectedRound,
       };
       if (selectedPhase) params.phase_id = selectedPhase;
+      if (selectedBuilding) params.building = selectedBuilding;
+      if (selectedUnit) params.unit = selectedUnit;
       if (selectedStatus) params.vote_status = selectedStatus;
       if (selectedSweepStatus) params.sweep_status = selectedSweepStatus;
       if (search) params.search = search;
@@ -188,7 +326,7 @@ export default function VotesPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedRound, communityId, pagination.page, pagination.limit, selectedPhase, selectedStatus, selectedSweepStatus, search]);
+  }, [selectedRound, communityId, pagination.page, pagination.limit, selectedPhase, selectedBuilding, selectedUnit, selectedStatus, selectedSweepStatus, search]);
 
   // 当小区变化时，重新加载该小区的轮次
   useEffect(() => {
@@ -199,6 +337,32 @@ export default function VotesPage() {
       setRounds([]);
     }
   }, [communityId, loadRounds, loadPhases]);
+
+  // 当期数变化时，加载楼号列表并重置选择
+  useEffect(() => {
+    if (selectedPhase) {
+      ownerApi.getBuildings(selectedPhase as number)
+        .then(response => setBuildings(response.data))
+        .catch(error => console.error('加载楼号失败:', error));
+    } else {
+      setBuildings([]);
+    }
+    setSelectedBuilding('');
+    setSelectedUnit('');
+    setUnits([]);
+  }, [selectedPhase]);
+
+  // 当楼号变化时，加载单元列表并重置选择
+  useEffect(() => {
+    if (selectedPhase && selectedBuilding) {
+      ownerApi.getUnits(selectedPhase as number, selectedBuilding)
+        .then(response => setUnits(response.data))
+        .catch(error => console.error('加载单元失败:', error));
+    } else {
+      setUnits([]);
+    }
+    setSelectedUnit('');
+  }, [selectedPhase, selectedBuilding]);
 
   useEffect(() => {
     // 默认选择进行中的轮次
@@ -668,11 +832,156 @@ export default function VotesPage() {
       {/* 投票记录 */}
       {activeTab === 'records' && (
         <div className="space-y-4">
-          {/* 筛选 */}
+          {/* 筛选 - Mobile optimized */}
           <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm p-4 md:p-5">
-            <div className="flex flex-wrap gap-3 md:gap-4 items-center">
-              {/* 搜索框 */}
-              <div className="w-full md:flex-1 md:min-w-64">
+            {/* Mobile: Simplified layout with quick toggle */}
+            <div className="md:hidden space-y-3">
+              {/* Search + Quick toggle row */}
+              <div className="flex gap-2">
+                <div className="flex-1 relative group">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                    placeholder="搜索房号/姓名"
+                    className="w-full pl-9 pr-3 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 placeholder-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all text-base"
+                  />
+                </div>
+                <button
+                  onClick={handleSearch}
+                  className="px-4 py-3 bg-blue-600 text-white rounded-xl font-medium"
+                >
+                  搜索
+                </button>
+              </div>
+
+              {/* Quick toggle: 只看待处理 */}
+              <button
+                onClick={() => setShowPendingOnly(!showPendingOnly)}
+                className={cn(
+                  "w-full flex items-center justify-center gap-2 py-3 rounded-xl font-medium transition-all",
+                  showPendingOnly
+                    ? "bg-amber-500 text-white shadow-md shadow-amber-500/20"
+                    : "bg-slate-100 text-slate-600"
+                )}
+              >
+                {showPendingOnly ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    只看待处理（已开启）
+                  </>
+                ) : (
+                  <>
+                    <Users className="w-4 h-4" />
+                    显示全部 · 点击只看待处理
+                  </>
+                )}
+              </button>
+
+              {/* Essential filters row */}
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={selectedRound}
+                  onChange={(e) => {
+                    setSelectedRound(e.target.value ? parseInt(e.target.value) : '');
+                    setPagination((prev) => ({ ...prev, page: 1 }));
+                  }}
+                  className="w-full px-3 min-h-[48px] py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all cursor-pointer text-base"
+                >
+                  <option value="">选择轮次</option>
+                  {rounds.map((round) => (
+                    <option key={round.id} value={round.id}>
+                      {round.name} {round.status === 'active' && '✓'}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={selectedPhase}
+                  onChange={(e) => {
+                    setSelectedPhase(e.target.value ? parseInt(e.target.value) : '');
+                    setPagination((prev) => ({ ...prev, page: 1 }));
+                  }}
+                  className="w-full px-3 min-h-[48px] py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all cursor-pointer text-base"
+                >
+                  <option value="">全部期数</option>
+                  {phases.map((phase) => (
+                    <option key={phase.id} value={phase.id}>
+                      {phase.name}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={selectedBuilding}
+                  onChange={(e) => {
+                    setSelectedBuilding(e.target.value);
+                    setPagination((prev) => ({ ...prev, page: 1 }));
+                  }}
+                  disabled={!selectedPhase || buildings.length === 0}
+                  className="w-full px-3 min-h-[48px] py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all cursor-pointer text-base disabled:opacity-50"
+                >
+                  <option value="">全部楼号</option>
+                  {buildings.map((building) => (
+                    <option key={building} value={building}>
+                      {building}栋
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={selectedUnit}
+                  onChange={(e) => {
+                    setSelectedUnit(e.target.value);
+                    setPagination((prev) => ({ ...prev, page: 1 }));
+                  }}
+                  disabled={!selectedBuilding || units.length === 0}
+                  className="w-full px-3 min-h-[48px] py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all cursor-pointer text-base disabled:opacity-50"
+                >
+                  <option value="">全部单元</option>
+                  {units.map((unit) => (
+                    <option key={unit} value={unit}>
+                      {unit}单元
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Action buttons - only show essential ones */}
+              {selectedRound && communityId && (
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    onClick={handleInitVotes}
+                    disabled={initializingVotes}
+                    className="flex items-center justify-center gap-1 py-3 bg-emerald-500 text-white rounded-xl font-medium disabled:opacity-50"
+                  >
+                    {initializingVotes ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                    <span className="text-sm">初始化</span>
+                  </button>
+                  <button
+                    onClick={handleExport}
+                    disabled={exporting}
+                    className="flex items-center justify-center gap-1 py-3 bg-blue-500 text-white rounded-xl font-medium disabled:opacity-50"
+                  >
+                    {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                    <span className="text-sm">导出</span>
+                  </button>
+                  <button
+                    onClick={() => setShowImportModal(true)}
+                    className="flex items-center justify-center gap-1 py-3 bg-purple-500 text-white rounded-xl font-medium"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span className="text-sm">导入</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Desktop: Full filter layout */}
+            <div className="hidden md:flex md:flex-wrap md:gap-4 md:items-center">
+              <div className="flex-1 min-w-64">
                 <div className="relative group">
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
                   <input
@@ -692,7 +1001,7 @@ export default function VotesPage() {
                   setSelectedRound(e.target.value ? parseInt(e.target.value) : '');
                   setPagination((prev) => ({ ...prev, page: 1 }));
                 }}
-                className="flex-1 min-w-0 md:flex-none px-3 md:px-4 min-h-[44px] py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer text-base"
+                className="px-4 min-h-[44px] py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer"
               >
                 <option value="">选择轮次</option>
                 {rounds.map((round) => (
@@ -708,7 +1017,7 @@ export default function VotesPage() {
                   setSelectedPhase(e.target.value ? parseInt(e.target.value) : '');
                   setPagination((prev) => ({ ...prev, page: 1 }));
                 }}
-                className="flex-1 min-w-0 md:flex-none px-3 md:px-4 min-h-[44px] py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer text-base"
+                className="px-4 min-h-[44px] py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer"
               >
                 <option value="">全部期数</option>
                 {phases.map((phase) => (
@@ -719,14 +1028,48 @@ export default function VotesPage() {
               </select>
 
               <select
+                value={selectedBuilding}
+                onChange={(e) => {
+                  setSelectedBuilding(e.target.value);
+                  setPagination((prev) => ({ ...prev, page: 1 }));
+                }}
+                disabled={!selectedPhase || buildings.length === 0}
+                className="px-4 min-h-[44px] py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer disabled:opacity-50"
+              >
+                <option value="">全部楼号</option>
+                {buildings.map((building) => (
+                  <option key={building} value={building}>
+                    {building}栋
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={selectedUnit}
+                onChange={(e) => {
+                  setSelectedUnit(e.target.value);
+                  setPagination((prev) => ({ ...prev, page: 1 }));
+                }}
+                disabled={!selectedBuilding || units.length === 0}
+                className="px-4 min-h-[44px] py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer disabled:opacity-50"
+              >
+                <option value="">全部单元</option>
+                {units.map((unit) => (
+                  <option key={unit} value={unit}>
+                    {unit}单元
+                  </option>
+                ))}
+              </select>
+
+              <select
                 value={selectedStatus}
                 onChange={(e) => {
                   setSelectedStatus(e.target.value);
                   setPagination((prev) => ({ ...prev, page: 1 }));
                 }}
-                className="flex-1 min-w-0 md:flex-none px-3 md:px-4 min-h-[44px] py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer text-base"
+                className="px-4 min-h-[44px] py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer"
               >
-                <option value="">全部投票状态</option>
+                <option value="">投票状态</option>
                 {Object.entries(voteStatusMap).map(([key, value]) => (
                   <option key={key} value={key}>
                     {value.label}
@@ -740,9 +1083,9 @@ export default function VotesPage() {
                   setSelectedSweepStatus(e.target.value);
                   setPagination((prev) => ({ ...prev, page: 1 }));
                 }}
-                className="flex-1 min-w-0 md:flex-none px-3 md:px-4 min-h-[44px] py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer text-base"
+                className="px-4 min-h-[44px] py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 cursor-pointer"
               >
-                <option value="">全部扫楼状态</option>
+                <option value="">扫楼状态</option>
                 {Object.entries(sweepStatusMap).map(([key, value]) => (
                   <option key={key} value={key}>
                     {value.label}
@@ -752,111 +1095,111 @@ export default function VotesPage() {
 
               <button
                 onClick={handleSearch}
-                className="w-full md:w-auto px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 shadow-md shadow-blue-500/20 transition-all duration-200 font-medium"
+                className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 shadow-md shadow-blue-500/20 transition-all duration-200 font-medium"
               >
                 搜索
               </button>
 
-              {/* 初始化、导出和导入按钮 */}
               {selectedRound && communityId && (
-                <div className="w-full md:w-auto flex flex-wrap gap-2 md:gap-3">
+                <>
                   <button
                     onClick={handleInitVotes}
                     disabled={initializingVotes}
-                    className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 md:px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 shadow-md shadow-emerald-500/20 transition-all duration-200 font-medium disabled:opacity-50 text-sm md:text-base"
+                    className="flex items-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-emerald-700 shadow-md shadow-emerald-500/20 transition-all duration-200 font-medium disabled:opacity-50"
                   >
-                    {initializingVotes ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <RefreshCw className="w-4 h-4" />
-                    )}
-                    <span className="hidden sm:inline">初始化记录</span>
-                    <span className="sm:hidden">初始化</span>
+                    {initializingVotes ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                    初始化
                   </button>
                   <button
                     onClick={handleExport}
                     disabled={exporting}
-                    className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 md:px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 shadow-md shadow-blue-500/20 transition-all duration-200 font-medium disabled:opacity-50 text-sm md:text-base"
+                    className="flex items-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 shadow-md shadow-blue-500/20 transition-all duration-200 font-medium disabled:opacity-50"
                   >
-                    {exporting ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Download className="w-4 h-4" />
-                    )}
-                    <span className="hidden sm:inline">导出 Excel</span>
-                    <span className="sm:hidden">导出</span>
+                    {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                    导出
                   </button>
                   <button
                     onClick={() => setShowImportModal(true)}
-                    className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3 md:px-4 py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl hover:from-purple-600 hover:to-purple-700 shadow-md shadow-purple-500/20 transition-all duration-200 font-medium text-sm md:text-base"
+                    className="flex items-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl hover:from-purple-600 hover:to-purple-700 shadow-md shadow-purple-500/20 transition-all duration-200 font-medium"
                   >
                     <Upload className="w-4 h-4" />
-                    <span className="hidden sm:inline">导入投票</span>
-                    <span className="sm:hidden">导入</span>
+                    导入
                   </button>
-                </div>
+                </>
               )}
             </div>
 
-            {/* 批量操作 */}
+            {/* 批量操作 - Mobile optimized */}
             {selectedIds.length > 0 && (
-              <div className="mt-4 flex flex-col gap-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-xl">
-                <div className="flex items-center gap-4">
+              <div className="mt-4 p-3 sm:p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-xl">
+                {/* Header: count and cancel */}
+                <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                      <Users className="w-4 h-4 text-blue-600" />
+                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                      <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600" />
                     </div>
                     <span className="text-sm font-medium text-blue-700">
-                      已选择 {selectedIds.length} 项
+                      已选 {selectedIds.length} 项
                     </span>
                   </div>
                   <button
                     onClick={() => setSelectedIds([])}
-                    className="px-4 py-2 text-sm bg-white text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-all duration-200 font-medium"
+                    className="px-3 py-1.5 text-xs sm:text-sm bg-white text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-all duration-200 font-medium"
                   >
-                    取消选择
+                    取消
                   </button>
                 </div>
-                <div className="flex gap-2 flex-wrap items-center">
-                  <span className="text-xs text-slate-500 font-medium">投票状态:</span>
-                  <button
-                    onClick={() => handleBatchStatusChange('voted')}
-                    className="px-3 py-1.5 text-sm bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 shadow-sm transition-all duration-200 font-medium"
-                  >
-                    已投票
-                  </button>
-                  <button
-                    onClick={() => handleBatchStatusChange('onsite')}
-                    className="px-3 py-1.5 text-sm bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 shadow-sm transition-all duration-200 font-medium"
-                  >
-                    现场投票
-                  </button>
-                  <button
-                    onClick={() => handleBatchStatusChange('refused')}
-                    className="px-3 py-1.5 text-sm bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 shadow-sm transition-all duration-200 font-medium"
-                  >
-                    拒绝
-                  </button>
-                  <div className="w-px h-6 bg-slate-300 mx-2" />
-                  <span className="text-xs text-slate-500 font-medium">扫楼状态:</span>
-                  <button
-                    onClick={() => handleBatchSweepStatusChange('completed')}
-                    className="px-3 py-1.5 text-sm bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 shadow-sm transition-all duration-200 font-medium"
-                  >
-                    已完成
-                  </button>
-                  <button
-                    onClick={() => handleBatchSweepStatusChange('in_progress')}
-                    className="px-3 py-1.5 text-sm bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg hover:from-amber-600 hover:to-amber-700 shadow-sm transition-all duration-200 font-medium"
-                  >
-                    进行中
-                  </button>
-                  <button
-                    onClick={() => handleBatchSweepStatusChange('pending')}
-                    className="px-3 py-1.5 text-sm bg-slate-400 text-white rounded-lg hover:bg-slate-500 shadow-sm transition-all duration-200 font-medium"
-                  >
-                    待扫楼
-                  </button>
+
+                {/* Action buttons - horizontal scroll on mobile */}
+                <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
+                  {/* Vote status group */}
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                    <span className="text-xs text-slate-500 font-medium whitespace-nowrap">投票:</span>
+                    <button
+                      onClick={() => handleBatchStatusChange('voted')}
+                      className="px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 shadow-sm transition-all duration-200 font-medium whitespace-nowrap"
+                    >
+                      已投票
+                    </button>
+                    <button
+                      onClick={() => handleBatchStatusChange('onsite')}
+                      className="px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 shadow-sm transition-all duration-200 font-medium whitespace-nowrap"
+                    >
+                      现场
+                    </button>
+                    <button
+                      onClick={() => handleBatchStatusChange('refused')}
+                      className="px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 shadow-sm transition-all duration-200 font-medium whitespace-nowrap"
+                    >
+                      拒绝
+                    </button>
+                  </div>
+
+                  {/* Divider */}
+                  <div className="w-px h-6 bg-slate-300 flex-shrink-0 self-center mx-1" />
+
+                  {/* Sweep status group */}
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                    <span className="text-xs text-slate-500 font-medium whitespace-nowrap">扫楼:</span>
+                    <button
+                      onClick={() => handleBatchSweepStatusChange('completed')}
+                      className="px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 shadow-sm transition-all duration-200 font-medium whitespace-nowrap"
+                    >
+                      完成
+                    </button>
+                    <button
+                      onClick={() => handleBatchSweepStatusChange('in_progress')}
+                      className="px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg hover:from-amber-600 hover:to-amber-700 shadow-sm transition-all duration-200 font-medium whitespace-nowrap"
+                    >
+                      进行中
+                    </button>
+                    <button
+                      onClick={() => handleBatchSweepStatusChange('pending')}
+                      className="px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm bg-slate-400 text-white rounded-lg hover:bg-slate-500 shadow-sm transition-all duration-200 font-medium whitespace-nowrap"
+                    >
+                      待扫
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -877,16 +1220,44 @@ export default function VotesPage() {
               <p className="text-slate-500">请先选择投票轮次</p>
             </div>
           ) : (
-            <DataTable<Vote & Record<string, unknown>>
-              columns={voteColumns as Parameters<typeof DataTable<Vote & Record<string, unknown>>>[0]['columns']}
-              data={votes as (Vote & Record<string, unknown>)[]}
-              loading={loading}
-              pagination={pagination}
-              onPageChange={(page) => setPagination((prev) => ({ ...prev, page }))}
-              selectedIds={selectedIds}
-              onSelectChange={setSelectedIds}
-              idKey="owner_id"
-            />
+            (() => {
+              // Filter votes based on showPendingOnly toggle (mobile only)
+              const completedStatuses = ['voted', 'onsite', 'video'];
+              const filteredVotes = showPendingOnly
+                ? votes.filter(v => !completedStatuses.includes(v.vote_status || ''))
+                : votes;
+
+              return (
+                <>
+                  {/* Mobile: Show filter result count */}
+                  {showPendingOnly && (
+                    <div className="md:hidden mb-3 px-1 text-sm text-amber-600 font-medium">
+                      显示 {filteredVotes.length} 条待处理（共 {votes.length} 条）
+                    </div>
+                  )}
+                  <DataTable<Vote & Record<string, unknown>>
+                    columns={voteColumns as Parameters<typeof DataTable<Vote & Record<string, unknown>>>[0]['columns']}
+                    data={filteredVotes as (Vote & Record<string, unknown>)[]}
+                    loading={loading}
+                    pagination={pagination}
+                    onPageChange={(page) => setPagination((prev) => ({ ...prev, page }))}
+                    selectedIds={selectedIds}
+                    onSelectChange={setSelectedIds}
+                    idKey="owner_id"
+                    mobileCardRender={(item, isSelected, onSelect) => (
+                      <VoteMobileCard
+                        vote={item as unknown as Vote}
+                        isSelected={isSelected}
+                        onSelect={onSelect}
+                        onStatusChange={(status) => handleQuickStatusChange(item as unknown as Vote, status)}
+                        onSweepChange={(status) => handleFieldUpdate(item as unknown as Vote, 'sweep_status', status)}
+                        onRemarkChange={(remark) => handleFieldUpdate(item as unknown as Vote, 'remark', remark)}
+                      />
+                    )}
+                  />
+                </>
+              );
+            })()
           )}
         </div>
       )}
@@ -935,18 +1306,18 @@ export default function VotesPage() {
         </div>
       )}
 
-      {/* 轮次表单弹窗 */}
+      {/* 轮次表单弹窗 - Mobile optimized */}
       {showRoundForm && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200 p-2 sm:p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
             {/* 弹窗头部 */}
-            <div className="px-6 py-4 bg-gradient-to-r from-slate-50 to-white border-b border-slate-100">
+            <div className="px-4 sm:px-6 py-3 sm:py-4 bg-gradient-to-r from-slate-50 to-white border-b border-slate-100 sticky top-0">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
-                    <Calendar className="w-5 h-5 text-white" />
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
+                    <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                   </div>
-                  <h2 className="text-lg font-semibold text-slate-900">
+                  <h2 className="text-base sm:text-lg font-semibold text-slate-900">
                     {editingRound ? '编辑投票轮次' : '新建投票轮次'}
                   </h2>
                 </div>
@@ -959,7 +1330,7 @@ export default function VotesPage() {
               </div>
             </div>
 
-            <div className="p-6 space-y-5">
+            <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   名称 <span className="text-red-500">*</span>
@@ -975,7 +1346,7 @@ export default function VotesPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
                     年份 <span className="text-red-500">*</span>
@@ -1005,7 +1376,7 @@ export default function VotesPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
                     开始日期
@@ -1087,18 +1458,18 @@ export default function VotesPage() {
         </div>
       )}
 
-      {/* 导入投票记录弹窗 */}
+      {/* 导入投票记录弹窗 - Mobile optimized */}
       {showImportModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200 p-2 sm:p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
             {/* 弹窗头部 */}
-            <div className="px-6 py-4 bg-gradient-to-r from-slate-50 to-white border-b border-slate-100">
+            <div className="px-4 sm:px-6 py-3 sm:py-4 bg-gradient-to-r from-slate-50 to-white border-b border-slate-100 sticky top-0">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
-                    <Upload className="w-5 h-5 text-white" />
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
+                    <Upload className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                   </div>
-                  <h2 className="text-lg font-semibold text-slate-900">
+                  <h2 className="text-base sm:text-lg font-semibold text-slate-900">
                     导入投票记录
                   </h2>
                 </div>
@@ -1115,10 +1486,10 @@ export default function VotesPage() {
               </div>
             </div>
 
-            <div className="p-6 space-y-5">
-              <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl text-sm text-blue-700">
-                <p className="font-medium mb-2">Excel 格式要求：</p>
-                <ul className="list-disc list-inside space-y-1 text-blue-600">
+            <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
+              <div className="p-3 sm:p-4 bg-blue-50 border border-blue-100 rounded-xl text-xs sm:text-sm text-blue-700">
+                <p className="font-medium mb-1.5 sm:mb-2">Excel 格式要求：</p>
+                <ul className="list-disc list-inside space-y-0.5 sm:space-y-1 text-blue-600">
                   <li>必须包含「房间号」列</li>
                   <li>投票状态列（如「25B投否」），值为 1 表示已投票</li>
                   <li>可选：备注列、扫楼情况列</li>
@@ -1133,10 +1504,10 @@ export default function VotesPage() {
                   type="file"
                   accept=".xlsx,.xls"
                   onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
+                  className="w-full px-3 sm:px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 text-sm file:mr-2 sm:file:mr-4 file:py-1.5 sm:file:py-2 file:px-3 sm:file:px-4 file:rounded-lg file:border-0 file:text-xs sm:file:text-sm file:font-medium file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
                 />
                 {importFile && (
-                  <p className="mt-2 text-sm text-slate-500">
+                  <p className="mt-2 text-xs sm:text-sm text-slate-500 truncate">
                     已选择: {importFile.name}
                   </p>
                 )}
@@ -1150,26 +1521,26 @@ export default function VotesPage() {
                   type="text"
                   value={voteColumn}
                   onChange={(e) => setVoteColumn(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200"
-                  placeholder="如：25B投否（留空则自动查找包含'投否'的列）"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white outline-none transition-all duration-200 text-sm"
+                  placeholder="如：25B投否（留空自动查找）"
                 />
               </div>
 
-              <div className="flex gap-3 pt-2">
+              <div className="flex gap-2 sm:gap-3 pt-2">
                 <button
                   onClick={() => {
                     setShowImportModal(false);
                     setImportFile(null);
                     setVoteColumn('');
                   }}
-                  className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 transition-all duration-200 font-medium"
+                  className="flex-1 py-2.5 sm:py-3 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 transition-all duration-200 font-medium text-sm sm:text-base"
                 >
                   取消
                 </button>
                 <button
                   onClick={handleImportVotes}
                   disabled={!importFile || importing}
-                  className="flex-1 py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl hover:from-purple-600 hover:to-purple-700 shadow-lg shadow-purple-500/20 transition-all duration-200 font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="flex-1 py-2.5 sm:py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl hover:from-purple-600 hover:to-purple-700 shadow-lg shadow-purple-500/20 transition-all duration-200 font-medium disabled:opacity-50 flex items-center justify-center gap-2 text-sm sm:text-base"
                 >
                   {importing && <Loader2 className="w-4 h-4 animate-spin" />}
                   {importing ? '导入中...' : '开始导入'}

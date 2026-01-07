@@ -32,32 +32,32 @@ export function formatPercent(value: number | null | undefined, total: number | 
   return `${percent.toFixed(1)}%`;
 }
 
-// 投票状态映射
+// 投票状态映射 - 鲜艳高对比配色
 export const voteStatusMap: Record<string, { label: string; color: string }> = {
-  pending: { label: '未投票', color: 'bg-gray-100 text-gray-800' },
-  voted: { label: '已投票', color: 'bg-green-100 text-green-800' },
-  refused: { label: '拒绝投票', color: 'bg-red-100 text-red-800' },
-  onsite: { label: '现场投票', color: 'bg-blue-100 text-blue-800' },
-  video: { label: '视频投票', color: 'bg-purple-100 text-purple-800' },
+  pending: { label: '未投票', color: 'bg-slate-100 text-slate-600 border border-slate-300' },
+  voted: { label: '已投票', color: 'bg-emerald-500 text-white font-medium' },
+  refused: { label: '拒绝投票', color: 'bg-rose-500 text-white font-medium' },
+  onsite: { label: '现场投票', color: 'bg-blue-500 text-white font-medium' },
+  video: { label: '视频投票', color: 'bg-violet-500 text-white font-medium' },
 };
 
 // 微信状态映射
 export const wechatStatusMap: Record<string, { label: string; color: string }> = {
-  '已加微信': { label: '已加微信', color: 'bg-green-100 text-green-800' },
-  '无法添加': { label: '无法添加', color: 'bg-red-100 text-red-800' },
-  '': { label: '未添加', color: 'bg-gray-100 text-gray-800' },
+  '已加微信': { label: '已加微信', color: 'bg-emerald-500 text-white' },
+  '无法添加': { label: '无法添加', color: 'bg-rose-500 text-white' },
+  '': { label: '未添加', color: 'bg-slate-100 text-slate-600' },
 };
 
 // 轮次状态映射
 export const roundStatusMap: Record<string, { label: string; color: string }> = {
-  draft: { label: '草稿', color: 'bg-gray-100 text-gray-800' },
-  active: { label: '进行中', color: 'bg-green-100 text-green-800' },
-  closed: { label: '已结束', color: 'bg-blue-100 text-blue-800' },
+  draft: { label: '草稿', color: 'bg-slate-100 text-slate-600' },
+  active: { label: '进行中', color: 'bg-emerald-500 text-white font-medium' },
+  closed: { label: '已结束', color: 'bg-slate-500 text-white' },
 };
 
-// 扫楼状态映射
+// 扫楼状态映射 - 鲜艳高对比配色
 export const sweepStatusMap: Record<string, { label: string; color: string }> = {
-  pending: { label: '待扫楼', color: 'bg-gray-100 text-gray-800' },
-  in_progress: { label: '进行中', color: 'bg-amber-100 text-amber-800' },
-  completed: { label: '已完成', color: 'bg-green-100 text-green-800' },
+  pending: { label: '待扫楼', color: 'bg-slate-100 text-slate-600 border border-slate-300' },
+  in_progress: { label: '进行中', color: 'bg-amber-500 text-white font-medium' },
+  completed: { label: '已完成', color: 'bg-emerald-500 text-white font-medium' },
 };

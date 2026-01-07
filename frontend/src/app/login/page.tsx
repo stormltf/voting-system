@@ -31,8 +31,8 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
+    <div className="fixed inset-0 bg-zinc-50 flex items-center justify-center p-4 overflow-auto">
+      <div className="w-full max-w-sm my-auto">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-12 h-12 bg-zinc-900 rounded-xl mb-5">
             <Vote className="w-6 h-6 text-white" />

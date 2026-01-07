@@ -28,6 +28,9 @@ interface DataTableProps<T> {
   selectedIds?: number[];
   onSelectChange?: (ids: number[]) => void;
   idKey?: string;
+  // Mobile card view support
+  mobileCardRender?: (item: T, isSelected: boolean, onSelect: () => void) => React.ReactNode;
+  showMobileCards?: boolean; // defaults to true if mobileCardRender is provided
 }
 
 export default function DataTable<T extends Record<string, unknown>>({
@@ -40,6 +43,8 @@ export default function DataTable<T extends Record<string, unknown>>({
   selectedIds,
   onSelectChange,
   idKey = 'id',
+  mobileCardRender,
+  showMobileCards = true,
 }: DataTableProps<T>) {
   const [localSelectedIds, setLocalSelectedIds] = useState<number[]>([]);
   const selected = selectedIds ?? localSelectedIds;
@@ -69,9 +74,57 @@ export default function DataTable<T extends Record<string, unknown>>({
     }
   };
 
+  // Determine if we should show mobile cards
+  const hasMobileCards = mobileCardRender && showMobileCards;
+
   return (
     <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden">
-      <div className="overflow-x-auto">
+      {/* Mobile Card View */}
+      {hasMobileCards && (
+        <div className="md:hidden">
+          {loading ? (
+            <div className="px-4 py-16 text-center">
+              <div className="flex flex-col items-center gap-3">
+                <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+                <span className="text-sm text-slate-500">加载中...</span>
+              </div>
+            </div>
+          ) : data.length === 0 ? (
+            <div className="px-4 py-16 text-center">
+              <div className="flex flex-col items-center gap-2">
+                <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center">
+                  <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                  </svg>
+                </div>
+                <span className="text-sm text-slate-500">暂无数据</span>
+              </div>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {data.map((item, index) => {
+                const itemId = item[idKey] as number;
+                const isSelected = selected.includes(itemId);
+                const handleSelect = () => {
+                  if (isSelected) {
+                    setSelected(selected.filter((i) => i !== itemId));
+                  } else {
+                    setSelected([...selected, itemId]);
+                  }
+                };
+                return (
+                  <div key={itemId || index} className="animate-card-slide-in">
+                    {mobileCardRender(item, isSelected, handleSelect)}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Desktop Table View */}
+      <div className={cn("overflow-x-auto", hasMobileCards && "hidden md:block")}>
         <table className="w-full min-w-max">
           <thead>
             <tr className="bg-gradient-to-r from-slate-50 to-slate-100/50 border-b border-slate-200/60">
@@ -190,14 +243,22 @@ export default function DataTable<T extends Record<string, unknown>>({
         </table>
       </div>
 
-      {/* 分页 */}
+      {/* 分页 - Responsive */}
       {pagination && pagination.totalPages > 0 && (
-        <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50/50">
-          <div className="text-sm text-slate-600">
-            共 <span className="font-semibold text-slate-900">{pagination.total}</span> 条记录，
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-4 py-3 border-t border-slate-100 bg-slate-50/50">
+          {/* Stats - simplified on mobile */}
+          <div className="text-sm text-slate-600 text-center sm:text-left">
+            <span className="hidden sm:inline">
+              共 <span className="font-semibold text-slate-900">{pagination.total}</span> 条记录，
+            </span>
+            <span className="sm:hidden">
+              <span className="font-semibold text-slate-900">{pagination.total}</span> 条 ·
+            </span>
             第 <span className="font-semibold text-slate-900">{pagination.page}</span> / {pagination.totalPages} 页
           </div>
-          <div className="flex items-center gap-1">
+
+          {/* Pagination controls */}
+          <div className="flex items-center justify-center gap-1">
             <PaginationButton
               onClick={() => onPageChange?.(1)}
               disabled={pagination.page === 1}
@@ -213,8 +274,8 @@ export default function DataTable<T extends Record<string, unknown>>({
               <ChevronLeft className="w-4 h-4" />
             </PaginationButton>
 
-            {/* 页码显示 */}
-            <div className="flex items-center gap-1 mx-1">
+            {/* Page numbers - hidden on mobile */}
+            <div className="hidden sm:flex items-center gap-1 mx-1">
               {getPageNumbers(pagination.page, pagination.totalPages).map((pageNum, idx) => (
                 pageNum === '...' ? (
                   <span key={`ellipsis-${idx}`} className="px-2 text-slate-400">...</span>
@@ -234,6 +295,11 @@ export default function DataTable<T extends Record<string, unknown>>({
                 )
               ))}
             </div>
+
+            {/* Mobile page indicator */}
+            <span className="sm:hidden px-3 text-sm text-slate-600 font-medium">
+              {pagination.page}/{pagination.totalPages}
+            </span>
 
             <PaginationButton
               onClick={() => onPageChange?.(pagination.page + 1)}
