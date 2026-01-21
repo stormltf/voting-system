@@ -1,5 +1,12 @@
 -- 业主大会投票管理系统 数据库结构 (TiDB Cloud 兼容版)
 -- 注意：TiDB 不支持某些 MySQL 特性，此版本已做兼容处理
+--
+-- TiDB 与 MySQL 主要差异：
+--   1. 不支持 ENUM 类型，使用 VARCHAR 替代
+--   2. 不强制外键约束（本文件用注释标明逻辑外键关系）
+--   3. 端口为 4000（非 MySQL 的 3306）
+--   4. GROUP BY 严格模式：SELECT 中的非聚合列必须在 GROUP BY 中
+--   5. HAVING 不支持列别名，需使用聚合函数表达式
 
 -- 创建数据库（在 TiDB Cloud 中可能需要单独执行或跳过）
 -- CREATE DATABASE IF NOT EXISTS voting_system;
@@ -10,14 +17,14 @@
 --   super_admin: 超级管理员，可以查看和管理所有小区，community_id 为 NULL
 --   community_admin: 小区管理员，可以查看和管理本小区的数据
 --   community_user: 小区普通用户，只能查看本小区的数据
--- 注意：TiDB 不支持 ENUM，使用 VARCHAR 替代，应用层需要验证值的有效性
+-- 逻辑外键：community_id -> communities(id)
 CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   username VARCHAR(50) UNIQUE NOT NULL,
   password VARCHAR(255) NOT NULL,
   name VARCHAR(100),
-  role VARCHAR(20) DEFAULT 'community_user',
-  community_id INT DEFAULT NULL,
+  role VARCHAR(20) DEFAULT 'community_user',  -- 有效值: super_admin, community_admin, community_user
+  community_id INT DEFAULT NULL,              -- 逻辑外键 -> communities(id)
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -33,9 +40,10 @@ CREATE TABLE IF NOT EXISTS communities (
 );
 
 -- 3. 期数表
+-- 逻辑外键：community_id -> communities(id) ON DELETE CASCADE
 CREATE TABLE IF NOT EXISTS phases (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  community_id INT NOT NULL,
+  community_id INT NOT NULL,                  -- 逻辑外键 -> communities(id)
   name VARCHAR(50) NOT NULL,
   code VARCHAR(10) NOT NULL,
   description TEXT,
@@ -45,9 +53,10 @@ CREATE TABLE IF NOT EXISTS phases (
 );
 
 -- 4. 业主表
+-- 逻辑外键：phase_id -> phases(id) ON DELETE CASCADE
 CREATE TABLE IF NOT EXISTS owners (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  phase_id INT NOT NULL,
+  phase_id INT NOT NULL,                      -- 逻辑外键 -> phases(id)
   seq_no INT,
   building VARCHAR(10),
   unit VARCHAR(10),
@@ -69,32 +78,35 @@ CREATE TABLE IF NOT EXISTS owners (
 );
 
 -- 5. 投票轮次表
+-- 逻辑外键：community_id -> communities(id) ON DELETE CASCADE
 CREATE TABLE IF NOT EXISTS vote_rounds (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  community_id INT,
+  community_id INT,                           -- 逻辑外键 -> communities(id)
   name VARCHAR(100) NOT NULL,
   year INT NOT NULL,
   round_code VARCHAR(20),
   start_date DATE,
   end_date DATE,
-  status VARCHAR(10) DEFAULT 'draft',
+  status VARCHAR(10) DEFAULT 'draft',         -- 有效值: draft, active, closed
   description TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 -- 6. 投票记录表
--- vote_status: pending(待投票), voted(已投票), refused(拒绝), onsite(现场投票), video(视频投票)
--- sweep_status: pending(待扫楼), in_progress(进行中), completed(已完成)
+-- 逻辑外键：owner_id -> owners(id) ON DELETE CASCADE
+-- 逻辑外键：round_id -> vote_rounds(id) ON DELETE CASCADE
+-- vote_status 有效值: pending(未投票), voted(已投票), refused(拒绝), onsite(现场投票), video(视频投票)
+-- sweep_status 有效值: pending(待扫楼), contacted(已联系), completed(已完成), unreachable(无法联系)
 CREATE TABLE IF NOT EXISTS votes (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  owner_id INT NOT NULL,
-  round_id INT NOT NULL,
-  vote_status VARCHAR(10) DEFAULT 'pending',
+  owner_id INT NOT NULL,                      -- 逻辑外键 -> owners(id)
+  round_id INT NOT NULL,                      -- 逻辑外键 -> vote_rounds(id)
+  vote_status VARCHAR(10) DEFAULT 'pending',  -- 有效值: pending, voted, refused, onsite, video
   vote_phone VARCHAR(50),
   vote_date DATE,
   remark TEXT,
-  sweep_status VARCHAR(20) DEFAULT 'pending',
+  sweep_status VARCHAR(20) DEFAULT 'pending', -- 有效值: pending, contacted, completed, unreachable
   sweep_remark TEXT,
   sweep_date DATE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -103,16 +115,17 @@ CREATE TABLE IF NOT EXISTS votes (
 );
 
 -- 7. 操作日志表
+-- 逻辑外键：user_id -> users(id)（不级联删除，保留日志）
 CREATE TABLE IF NOT EXISTS operation_logs (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  user_id INT,
+  user_id INT,                                -- 逻辑外键 -> users(id)
   username VARCHAR(50),
-  action VARCHAR(50) NOT NULL,
-  module VARCHAR(50) NOT NULL,
+  action VARCHAR(50) NOT NULL,                -- 操作类型: create, update, delete, import, login 等
+  module VARCHAR(50) NOT NULL,                -- 模块: users, communities, owners, votes 等
   target_type VARCHAR(50),
   target_id INT,
   target_name VARCHAR(200),
-  details TEXT,
+  details TEXT,                               -- JSON 格式的详细信息
   ip_address VARCHAR(50),
   user_agent VARCHAR(500),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -124,8 +137,10 @@ CREATE INDEX idx_owners_phase ON owners(phase_id);
 CREATE INDEX idx_owners_building ON owners(building);
 CREATE INDEX idx_owners_name ON owners(owner_name);
 CREATE INDEX idx_vote_rounds_community ON vote_rounds(community_id);
+CREATE INDEX idx_votes_owner ON votes(owner_id);
 CREATE INDEX idx_votes_round ON votes(round_id);
 CREATE INDEX idx_votes_status ON votes(vote_status);
+CREATE INDEX idx_votes_sweep_status ON votes(sweep_status);
 CREATE INDEX idx_logs_user ON operation_logs(user_id);
 CREATE INDEX idx_logs_action ON operation_logs(action);
 CREATE INDEX idx_logs_module ON operation_logs(module);
