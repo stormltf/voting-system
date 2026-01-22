@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Upload, Edit2, Check, X, Users, FileSpreadsheet, Loader2, Download, Plus } from 'lucide-react';
+import { Search, Upload, Edit2, Check, X, Users, FileSpreadsheet, Loader2, Download, Plus, Trash2 } from 'lucide-react';
 import DataTable from '@/components/DataTable';
 import { ownerApi, communityApi } from '@/lib/api';
 import { cn, wechatStatusMap } from '@/lib/utils';
@@ -36,7 +36,7 @@ export default function OwnersPage() {
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({
     page: 1,
-    limit: 50,
+    limit: 3000,
     total: 0,
     totalPages: 0,
   });
@@ -345,6 +345,21 @@ export default function OwnersPage() {
     }
   };
 
+  // 删除业主
+  const handleDelete = async (owner: Owner) => {
+    if (!confirm(`确定要删除业主 "${owner.room_number} - ${owner.owner_name || '未知'}" 吗？此操作不可恢复。`)) {
+      return;
+    }
+    try {
+      await ownerApi.delete(owner.id);
+      loadOwners();
+    } catch (error) {
+      const err = error as { response?: { data?: { error?: string } } };
+      console.error('删除失败:', error);
+      alert(err.response?.data?.error || '删除失败');
+    }
+  };
+
   const columns = [
     { key: 'phase_name', header: '期数', className: 'whitespace-nowrap min-w-16', sticky: true, stickyOffset: 0 },
     { key: 'room_number', header: '房间号', className: 'whitespace-nowrap min-w-20', sticky: true, stickyOffset: 64 },
@@ -524,13 +539,22 @@ export default function OwnersPage() {
           </button>
         </div>
       ) : (
-        <button
-          onClick={(e) => { e.stopPropagation(); handleStartEdit(item); }}
-          className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-          title="编辑"
-        >
-          <Edit2 className="w-4 h-4" />
-        </button>
+        <div className="flex gap-1">
+          <button
+            onClick={(e) => { e.stopPropagation(); handleStartEdit(item); }}
+            className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+            title="编辑"
+          >
+            <Edit2 className="w-4 h-4" />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); handleDelete(item); }}
+            className="p-1 text-red-600 hover:bg-red-50 rounded"
+            title="删除"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
       ),
     },
   ];

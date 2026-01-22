@@ -598,9 +598,11 @@ describe('Owners Routes', () => {
       pool.query.mockResolvedValueOnce([[{ community_id: 1 }]]);
       // 第二次查询：获取要删除的业主信息
       pool.query.mockResolvedValueOnce([[{ room_number: '01-01-0101', owner_name: '张三' }]]);
-      // 第三次查询：删除业主
+      // 第三次查询：删除关联的投票记录
+      pool.query.mockResolvedValueOnce([{ affectedRows: 2 }]);
+      // 第四次查询：删除业主
       pool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
-      // 第四次查询：记录日志
+      // 第五次查询：记录日志
       pool.query.mockResolvedValueOnce([{ insertId: 1 }]);
 
       const response = await request(app)
@@ -609,6 +611,27 @@ describe('Owners Routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.message).toBe('删除成功');
+    });
+
+    it('应该同时删除关联的投票记录', async () => {
+      // 第一次查询：获取业主所属小区
+      pool.query.mockResolvedValueOnce([[{ community_id: 1 }]]);
+      // 第二次查询：获取要删除的业主信息
+      pool.query.mockResolvedValueOnce([[{ room_number: '01-01-0101', owner_name: '张三' }]]);
+      // 第三次查询：删除关联的投票记录
+      pool.query.mockResolvedValueOnce([{ affectedRows: 3 }]);
+      // 第四次查询：删除业主
+      pool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
+      // 第五次查询：记录日志
+      pool.query.mockResolvedValueOnce([{ insertId: 1 }]);
+
+      const response = await request(app)
+        .delete('/api/owners/1')
+        .set('Authorization', `Bearer ${superAdminToken}`);
+
+      expect(response.status).toBe(200);
+      // 验证删除投票记录的 SQL 被调用
+      expect(pool.query).toHaveBeenCalledWith('DELETE FROM votes WHERE owner_id = ?', [1]);
     });
 
     it('应该返回 404 如果业主不存在', async () => {

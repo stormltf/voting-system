@@ -541,6 +541,10 @@ router.delete('/:id', authMiddleware, adminMiddleware, async (req, res) => {
     const [owners] = await pool.query('SELECT room_number, owner_name FROM owners WHERE id = ?', [ownerId]);
     const deletedOwner = owners[0];
 
+    // 先删除关联的投票记录
+    await pool.query('DELETE FROM votes WHERE owner_id = ?', [ownerId]);
+
+    // 再删除业主
     await pool.query('DELETE FROM owners WHERE id = ?', [ownerId]);
 
     // 记录日志
