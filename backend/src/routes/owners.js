@@ -37,8 +37,9 @@ const upload = multer({
   limits: { fileSize: 2 * 1024 * 1024 } // 限制 2MB，防止大文件导致 OOM
 });
 
-// 内存优化：最大允许导入的行数
+// 内存优化：最大允许导入/导出的行数
 const MAX_IMPORT_ROWS = 5000;
+const MAX_EXPORT_ROWS = 10000;
 
 // 获取业主列表（支持分页、搜索、筛选）
 router.get('/', authMiddleware, async (req, res) => {
@@ -212,7 +213,24 @@ router.get('/export', authMiddleware, async (req, res) => {
 
     const whereClause = whereConditions.join(' AND ');
 
-    // 获取数据（不分页）
+    // 内存优化：先检查数据量，超过限制则拒绝
+    const [countResult] = await pool.query(`
+      SELECT COUNT(*) as total
+      FROM owners o
+      JOIN phases p ON o.phase_id = p.id
+      JOIN communities c ON p.community_id = c.id
+      ${voteJoin}
+      WHERE ${whereClause}
+    `, [...joinParams, ...params]);
+
+    const totalCount = countResult[0].total;
+    if (totalCount > MAX_EXPORT_ROWS) {
+      return res.status(400).json({
+        error: `数据量过大（${totalCount} 条），最多支持导出 ${MAX_EXPORT_ROWS} 条记录，请添加筛选条件`
+      });
+    }
+
+    // 获取数据（添加 LIMIT 保护）
     const [owners] = await pool.query(`
       SELECT o.*, p.name as phase_name, c.name as community_name
              ${voteSelect}
@@ -222,7 +240,8 @@ router.get('/export', authMiddleware, async (req, res) => {
       ${voteJoin}
       WHERE ${whereClause}
       ORDER BY o.phase_id, o.building, o.unit, o.room
-    `, [...joinParams, ...params]);
+      LIMIT ?
+    `, [...joinParams, ...params, MAX_EXPORT_ROWS]);
 
     // 投票状态映射
     const voteStatusMap = {

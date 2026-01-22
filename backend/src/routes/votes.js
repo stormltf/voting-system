@@ -21,9 +21,13 @@ const ALLOWED_MIME_TYPES = [
   'text/csv'
 ];
 
+// 内存优化：限制导入/导出的最大行数
+const MAX_IMPORT_ROWS = 5000;
+const MAX_EXPORT_ROWS = 10000;
+
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 限制 5MB
+  limits: { fileSize: 2 * 1024 * 1024 }, // 内存优化：限制 2MB
   fileFilter: (req, file, cb) => {
     // 检查文件扩展名
     const ext = file.originalname.toLowerCase().split('.').pop();
@@ -505,7 +509,7 @@ router.post('/import', authMiddleware, adminMiddleware, (req, res, next) => {
         return res.status(400).json({ error: err.message });
       }
       if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ error: '文件大小超过限制（最大5MB）' });
+        return res.status(400).json({ error: '文件大小超过限制（最大2MB）' });
       }
       return res.status(400).json({ error: err.message || '文件上传失败' });
     }
@@ -542,6 +546,13 @@ router.post('/import', authMiddleware, adminMiddleware, (req, res, next) => {
       return res.status(400).json({ error: 'Excel 文件为空或格式错误' });
     }
 
+    // 内存优化：限制最大导入行数
+    if (sheet.rowCount > MAX_IMPORT_ROWS + 1) {
+      return res.status(400).json({
+        error: `数据量过大，最多支持导入 ${MAX_IMPORT_ROWS} 条记录，当前文件包含 ${sheet.rowCount - 1} 条`
+      });
+    }
+
     const headers = (sheet.getRow(1).values || []).slice(1).map(v => String(v || '').trim());
 
     // Find Room Column
@@ -568,11 +579,12 @@ router.post('/import', authMiddleware, adminMiddleware, (req, res, next) => {
     const remarkColIndex = headers.findIndex(h => h && h.includes('备注'));
     const sweepColIndex = headers.findIndex(h => h && h.includes('扫楼'));
 
-    // Get owners map
+    // Get owners map（内存优化：限制查询数量）
     const [owners] = await pool.query(`
       SELECT o.id, o.room_number FROM owners o
       JOIN phases p ON o.phase_id = p.id
       WHERE p.community_id = ?
+      LIMIT 50000
     `, [community_id]);
 
     const roomToOwnerId = {};
@@ -637,9 +649,9 @@ router.post('/import', authMiddleware, adminMiddleware, (req, res, next) => {
       ]);
     }
 
-    // Bulk Insert / Update in batches
+    // Bulk Insert / Update in batches（内存优化：减小批次大小）
     if (bulkData.length > 0) {
-      const BATCH_SIZE = 1000;
+      const BATCH_SIZE = 200;
       for (let i = 0; i < bulkData.length; i += BATCH_SIZE) {
         const batch = bulkData.slice(i, i + BATCH_SIZE);
 
@@ -653,6 +665,9 @@ router.post('/import', authMiddleware, adminMiddleware, (req, res, next) => {
             sweep_remark = VALUES(sweep_remark),
             sweep_date = VALUES(sweep_date)
         `, [batch]);
+
+        // 让出 CPU 时间，允许 GC 运行
+        await new Promise(resolve => setImmediate(resolve));
       }
     }
 
@@ -723,7 +738,24 @@ router.get('/export', authMiddleware, async (req, res) => {
 
     const whereClause = whereConditions.join(' AND ');
 
-    // 获取投票数据
+    // 内存优化：先检查数据量
+    const [countResult] = await pool.query(`
+      SELECT COUNT(*) as total
+      FROM owners o
+      JOIN phases p ON o.phase_id = p.id
+      JOIN communities c ON p.community_id = c.id
+      LEFT JOIN votes v ON o.id = v.owner_id AND v.round_id = ?
+      WHERE ${whereClause}
+    `, [round_id, ...params]);
+
+    const totalCount = countResult[0].total;
+    if (totalCount > MAX_EXPORT_ROWS) {
+      return res.status(400).json({
+        error: `数据量过大（${totalCount} 条），最多支持导出 ${MAX_EXPORT_ROWS} 条记录，请添加筛选条件`
+      });
+    }
+
+    // 获取投票数据（添加 LIMIT 保护）
     const [records] = await pool.query(`
       SELECT
         o.seq_no,
@@ -755,7 +787,8 @@ router.get('/export', authMiddleware, async (req, res) => {
       LEFT JOIN vote_rounds r ON r.id = ?
       WHERE ${whereClause}
       ORDER BY p.name, o.building, o.unit, o.room
-    `, [round_id, round_id, ...params]);
+      LIMIT ?
+    `, [round_id, round_id, ...params, MAX_EXPORT_ROWS]);
 
     // 投票状态映射
     const voteStatusMap = {

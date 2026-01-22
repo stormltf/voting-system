@@ -593,6 +593,10 @@ async function processSmsTask(taskId) {
     query += filter.sql;
     params.push(...filter.params);
 
+    // 内存优化：限制单次发送最大接收人数
+    const MAX_SMS_RECIPIENTS = 10000;
+    query += ` LIMIT ${MAX_SMS_RECIPIENTS}`;
+
     const [owners] = await connection.query(query, params);
 
     // 统计

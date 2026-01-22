@@ -1206,6 +1206,8 @@ describe('Votes Routes', () => {
         const mockRecords = [
           { seq_no: 1, room_number: '01-01-0101', building: '01', unit: '01', room: '0101', owner_name: '张三', community_name: '阳光花园', phase_name: '一期', round_name: '2024', vote_status: 'voted' }
         ];
+        // Mock COUNT query + SELECT query
+        pool.query.mockResolvedValueOnce([[{ total: 1 }]]);
         pool.query.mockResolvedValueOnce([mockRecords]);
 
         const response = await request(app)
@@ -1217,6 +1219,7 @@ describe('Votes Routes', () => {
       });
 
       it('应该支持按状态筛选导出', async () => {
+        pool.query.mockResolvedValueOnce([[{ total: 1 }]]);
         pool.query.mockResolvedValueOnce([[{ seq_no: 1, vote_status: 'pending' }]]);
 
         const response = await request(app)
@@ -1227,6 +1230,7 @@ describe('Votes Routes', () => {
       });
 
       it('应该支持搜索导出', async () => {
+        pool.query.mockResolvedValueOnce([[{ total: 1 }]]);
         pool.query.mockResolvedValueOnce([[{ seq_no: 1, owner_name: '张三' }]]);
 
         const response = await request(app)
@@ -1237,6 +1241,7 @@ describe('Votes Routes', () => {
       });
 
       it('普通用户只能导出本小区的数据', async () => {
+        pool.query.mockResolvedValueOnce([[{ total: 1 }]]);
         pool.query.mockResolvedValueOnce([[{ seq_no: 1, vote_status: 'voted' }]]);
 
         const response = await request(app)
@@ -1244,6 +1249,17 @@ describe('Votes Routes', () => {
           .set('Authorization', `Bearer ${communityUserToken}`);
 
         expect(response.status).toBe(200);
+      });
+
+      it('应该拒绝超过限制的导出', async () => {
+        pool.query.mockResolvedValueOnce([[{ total: 20000 }]]);
+
+        const response = await request(app)
+          .get('/api/votes/export?round_id=1')
+          .set('Authorization', `Bearer ${superAdminToken}`);
+
+        expect(response.status).toBe(400);
+        expect(response.body.error).toContain('数据量过大');
       });
 
       it('应该处理服务器错误', async () => {

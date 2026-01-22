@@ -14,7 +14,7 @@ router.get('/', authMiddleware, async (req, res) => {
 
     const {
       page = 1,
-      limit = 20,
+      limit: rawLimit = 20,
       user_id,
       action,
       module,
@@ -23,7 +23,9 @@ router.get('/', authMiddleware, async (req, res) => {
       search,
     } = req.query;
 
-    const offset = (parseInt(page) - 1) * parseInt(limit);
+    // 内存优化：限制 limit 最大值为 100
+    const limit = Math.min(parseInt(rawLimit) || 20, 100);
+    const offset = (parseInt(page) - 1) * limit;
     let whereClause = '1=1';
     const params = [];
 
@@ -76,7 +78,7 @@ router.get('/', authMiddleware, async (req, res) => {
        WHERE ${whereClause}
        ORDER BY created_at DESC
        LIMIT ? OFFSET ?`,
-      [...params, parseInt(limit), offset]
+      [...params, limit, offset]
     );
 
     res.json({
@@ -84,8 +86,8 @@ router.get('/', authMiddleware, async (req, res) => {
       pagination: {
         total,
         page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(total / parseInt(limit)),
+        limit,
+        totalPages: Math.ceil(total / limit),
       },
     });
   } catch (error) {
