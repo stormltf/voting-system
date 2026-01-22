@@ -10,6 +10,7 @@ const communitiesRoutes = require('./routes/communities');
 const ownersRoutes = require('./routes/owners');
 const votesRoutes = require('./routes/votes');
 const logsRoutes = require('./routes/logs');
+const smsRoutes = require('./routes/sms');
 
 const app = express();
 const PORT = process.env.PORT || 8081;
@@ -67,6 +68,7 @@ app.use('/api/communities', communitiesRoutes);
 app.use('/api/owners', ownersRoutes);
 app.use('/api/votes', votesRoutes);
 app.use('/api/logs', logsRoutes);
+app.use('/api/sms', smsRoutes);
 
 // 健康检查
 app.get('/api/health', (req, res) => {

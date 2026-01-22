@@ -13,6 +13,7 @@ import {
   Check,
   Menu,
   X,
+  MessageSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -33,6 +34,7 @@ const menuItems = [
   { href: '/dashboard', label: '首页', icon: Home },
   { href: '/dashboard/votes', label: '投票管理', icon: Vote },
   { href: '/dashboard/owners', label: '业主管理', icon: Users },
+  { href: '/dashboard/sms', label: '短信管理', icon: MessageSquare },
   { href: '/dashboard/communities', label: '小区管理', icon: Building2 },
   { href: '/dashboard/settings', label: '系统设置', icon: Settings },
 ];

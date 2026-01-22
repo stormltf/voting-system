@@ -66,9 +66,9 @@ CREATE TABLE IF NOT EXISTS owners (
   area DECIMAL(10,2),
   parking_no VARCHAR(20),
   parking_area DECIMAL(10,2),
-  phone1 VARCHAR(30),
-  phone2 VARCHAR(30),
-  phone3 VARCHAR(30),
+  phone1 VARCHAR(100),
+  phone2 VARCHAR(100),
+  phone3 VARCHAR(100),
   wechat_status VARCHAR(20) DEFAULT '',
   wechat_contact VARCHAR(100),
   house_status VARCHAR(50),
@@ -167,3 +167,88 @@ INSERT INTO vote_rounds (community_id, name, year, round_code, status) VALUES
 (1, '2024年业主大会', 2024, '2024', 'closed'),
 (1, '2025年A轮业主大会', 2025, '2025A', 'closed'),
 (1, '2025年B轮业主大会', 2025, '2025B', 'active');
+
+-- 8. 短信配置表（每个小区独立配置阿里云短信服务）
+-- 逻辑外键：community_id -> communities(id) ON DELETE CASCADE
+CREATE TABLE IF NOT EXISTS sms_configs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  community_id INT NOT NULL UNIQUE,              -- 逻辑外键 -> communities(id)
+  access_key_id VARCHAR(100) NOT NULL,
+  access_key_secret VARCHAR(255) NOT NULL,
+  enabled TINYINT(1) DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- 9. 短信模板表
+-- 逻辑外键：community_id -> communities(id) ON DELETE CASCADE
+-- variable_mapping 存储 JSON 格式的变量映射，如：{"name": "owner_name", "time": "end_date"}
+CREATE TABLE IF NOT EXISTS sms_templates (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  community_id INT NOT NULL,                     -- 逻辑外键 -> communities(id)
+  name VARCHAR(100) NOT NULL,                    -- 模板名称（自定义）
+  template_code VARCHAR(50) NOT NULL,            -- 阿里云模板 CODE
+  sign_name VARCHAR(50) NOT NULL,                -- 阿里云签名名称
+  content_preview TEXT,                          -- 模板内容预览
+  variable_mapping JSON,                         -- 变量映射 JSON
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- 10. 短信发送任务表
+-- 逻辑外键：community_id -> communities(id) ON DELETE CASCADE
+-- 逻辑外键：template_id -> sms_templates(id) ON DELETE CASCADE
+-- 逻辑外键：round_id -> vote_rounds(id) ON DELETE SET NULL
+-- 逻辑外键：operator_id -> users(id) ON DELETE CASCADE
+-- task_type 有效值: vote_notice(投票通知), community_notice(社区公告)
+-- target_filter 有效值: all(全部业主), not_voted(未投票业主)
+-- status 有效值: pending(待处理), processing(处理中), completed(已完成), failed(失败)
+CREATE TABLE IF NOT EXISTS sms_tasks (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  community_id INT NOT NULL,                     -- 逻辑外键 -> communities(id)
+  template_id INT NOT NULL,                      -- 逻辑外键 -> sms_templates(id)
+  task_type VARCHAR(20) NOT NULL,                -- 有效值: vote_notice, community_notice
+  round_id INT DEFAULT NULL,                     -- 逻辑外键 -> vote_rounds(id)
+  target_buildings JSON,                         -- 目标楼栋 JSON 数组
+  target_filter VARCHAR(20) DEFAULT 'all',       -- 有效值: all, not_voted
+  total_count INT DEFAULT 0,
+  success_count INT DEFAULT 0,
+  fail_count INT DEFAULT 0,
+  no_phone_count INT DEFAULT 0,
+  status VARCHAR(20) DEFAULT 'pending',          -- 有效值: pending, processing, completed, failed
+  operator_id INT NOT NULL,                      -- 逻辑外键 -> users(id)
+  operator_name VARCHAR(100),
+  error_message TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- 11. 短信发送记录表（每条短信的发送详情）
+-- 逻辑外键：task_id -> sms_tasks(id) ON DELETE CASCADE
+-- 逻辑外键：owner_id -> owners(id) ON DELETE CASCADE
+-- status 有效值: pending(待发送), success(成功), failed(失败)
+CREATE TABLE IF NOT EXISTS sms_logs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  task_id INT NOT NULL,                          -- 逻辑外键 -> sms_tasks(id)
+  owner_id INT NOT NULL,                         -- 逻辑外键 -> owners(id)
+  owner_name VARCHAR(100),
+  phone VARCHAR(30) NOT NULL,
+  template_params JSON,                          -- 模板参数 JSON
+  status VARCHAR(20) DEFAULT 'pending',          -- 有效值: pending, success, failed
+  aliyun_request_id VARCHAR(100),
+  aliyun_biz_id VARCHAR(100),
+  error_code VARCHAR(50),
+  error_message TEXT,
+  sent_at TIMESTAMP NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 短信相关索引
+CREATE INDEX idx_sms_configs_community ON sms_configs(community_id);
+CREATE INDEX idx_sms_templates_community ON sms_templates(community_id);
+CREATE INDEX idx_sms_tasks_community ON sms_tasks(community_id);
+CREATE INDEX idx_sms_tasks_status ON sms_tasks(status);
+CREATE INDEX idx_sms_tasks_created ON sms_tasks(created_at);
+CREATE INDEX idx_sms_logs_task ON sms_logs(task_id);
+CREATE INDEX idx_sms_logs_status ON sms_logs(status);
+CREATE INDEX idx_sms_logs_owner ON sms_logs(owner_id);

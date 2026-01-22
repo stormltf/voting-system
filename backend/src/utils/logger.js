@@ -32,6 +32,7 @@ const Modules = {
   OWNER: 'owner',
   VOTE_ROUND: 'vote_round',
   VOTE: 'vote',
+  SMS: 'sms',
 };
 
 /**

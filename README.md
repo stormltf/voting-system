@@ -33,6 +33,7 @@
 | **扫楼管理** | 4 种状态：待扫楼 / 已联系 / 已完成 / 无法联系 |
 | **双维度统计** | 按户数统计 + 按面积加权统计 |
 | **数据可视化** | 楼层平面图 + 统计图表 |
+| **短信通知** | 阿里云短信服务，支持投票通知和社区公告 |
 
 ### 用户权限
 
@@ -226,7 +227,8 @@ voting-system/
 │   │   │   ├── communities.js # 小区和期数
 │   │   │   ├── owners.js      # 业主管理
 │   │   │   ├── votes.js       # 投票和扫楼
-│   │   │   └── logs.js        # 操作日志
+│   │   │   ├── logs.js        # 操作日志
+│   │   │   └── sms.js         # 短信通知
 │   │   ├── middleware/        # 中间件
 │   │   ├── models/            # 数据库连接
 │   │   └── utils/             # 工具函数
@@ -240,6 +242,7 @@ voting-system/
 │   │   │       ├── communities/
 │   │   │       ├── owners/
 │   │   │       ├── votes/
+│   │   │       ├── sms/
 │   │   │       └── settings/
 │   │   ├── components/        # 组件
 │   │   ├── contexts/          # 状态管理
@@ -308,6 +311,24 @@ voting-system/
 | GET | `/api/votes/stats` | 获取统计数据 |
 | PUT | `/api/votes/sweep/batch` | 批量更新扫楼 |
 
+### 短信管理
+
+| 方法 | 路径 | 说明 | 权限 |
+|------|------|------|------|
+| GET | `/api/sms/available-fields` | 获取可用变量字段 | 登录 |
+| GET | `/api/sms/config/:communityId` | 获取短信配置 | 管理员 |
+| POST | `/api/sms/config` | 保存短信配置 | 管理员 |
+| GET | `/api/sms/templates` | 获取模板列表 | 管理员 |
+| POST | `/api/sms/templates` | 创建模板 | 管理员 |
+| PUT | `/api/sms/templates/:id` | 更新模板 | 管理员 |
+| DELETE | `/api/sms/templates/:id` | 删除模板 | 管理员 |
+| GET | `/api/sms/buildings/:communityId` | 获取楼栋列表（按期数分组） | 登录 |
+| POST | `/api/sms/preview` | 预览发送对象 | 管理员 |
+| POST | `/api/sms/send` | 发送短信 | 管理员 |
+| GET | `/api/sms/tasks` | 获取发送任务列表 | 管理员 |
+| GET | `/api/sms/tasks/:id` | 获取任务详情 | 管理员 |
+| GET | `/api/sms/tasks/:taskId/logs` | 获取发送记录 | 管理员 |
+
 ### 日志接口
 
 | 方法 | 路径 | 说明 | 权限 |
@@ -347,6 +368,10 @@ operation_logs (操作日志)
 | `vote_rounds` | 投票轮次 | community_id, year, status |
 | `votes` | 投票记录 | owner_id, round_id, vote_status, sweep_status |
 | `operation_logs` | 操作日志 | user_id, action, module, details |
+| `sms_configs` | 短信配置 | community_id, access_key_id, access_key_secret |
+| `sms_templates` | 短信模板 | community_id, template_code, sign_name, variable_mapping |
+| `sms_tasks` | 发送任务 | community_id, template_id, status, total_count |
+| `sms_logs` | 发送记录 | task_id, owner_id, phone, status |
 
 ### 状态码说明
 
@@ -368,6 +393,23 @@ operation_logs (操作日志)
 | `contacted` | 已联系 |
 | `completed` | 已完成 |
 | `unreachable` | 无法联系 |
+
+**短信任务状态 (sms_tasks.status)**
+
+| 状态 | 说明 |
+|------|------|
+| `pending` | 待处理 |
+| `processing` | 处理中 |
+| `completed` | 已完成 |
+| `failed` | 失败 |
+
+**短信发送状态 (sms_logs.status)**
+
+| 状态 | 说明 |
+|------|------|
+| `pending` | 待发送 |
+| `success` | 发送成功 |
+| `failed` | 发送失败 |
 
 > 完整建表语句请查看 [`database/schema.sql`](./database/schema.sql)
 

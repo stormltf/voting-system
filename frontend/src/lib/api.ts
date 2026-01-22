@@ -98,6 +98,101 @@ export interface OperationLog {
   created_at?: string;
 }
 
+// 短信相关类型定义
+export interface SmsConfig {
+  id: number;
+  community_id: number;
+  access_key_id: string;
+  enabled: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SmsTemplate {
+  id: number;
+  community_id: number;
+  name: string;
+  template_code: string;
+  sign_name: string;
+  content_preview?: string;
+  variable_mapping?: Record<string, string>;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SmsTask {
+  id: number;
+  community_id: number;
+  template_id: number;
+  task_type: 'vote_notice' | 'community_notice';
+  round_id?: number;
+  target_buildings?: string[];
+  target_filter: 'all' | 'not_voted';
+  total_count: number;
+  success_count: number;
+  fail_count: number;
+  no_phone_count: number;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  operator_id: number;
+  operator_name?: string;
+  error_message?: string;
+  template_name?: string;
+  round_name?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SmsLog {
+  id: number;
+  task_id: number;
+  owner_id: number;
+  owner_name?: string;
+  phone: string;
+  template_params?: Record<string, string>;
+  status: 'pending' | 'success' | 'failed';
+  aliyun_request_id?: string;
+  aliyun_biz_id?: string;
+  error_code?: string;
+  error_message?: string;
+  sent_at?: string;
+  created_at?: string;
+}
+
+export interface SmsPreviewResult {
+  total_count: number;
+  valid_count: number;
+  no_phone_count: number;
+  recipients: Array<{
+    id: number;
+    owner_name: string;
+    phase_name?: string;
+    room_number: string;
+    phone: string | null;
+    has_valid_phone: boolean;
+    vote_status?: string;
+  }>;
+}
+
+export interface PhaseBuildings {
+  phase_id: number;
+  phase_name: string;
+  buildings: Array<{
+    building: string;
+    owner_count: number;
+  }>;
+}
+
+export interface TargetSelection {
+  phase_id: number;
+  buildings: string[];
+}
+
+export interface AvailableField {
+  key: string;
+  label: string;
+  source: string;
+}
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -299,6 +394,68 @@ export const logsApi = {
   }) => api.get('/logs', { params }),
   getStats: (days?: number) => api.get('/logs/stats', { params: { days } }),
   getFilters: () => api.get('/logs/filters'),
+};
+
+// 短信 API
+export const smsApi = {
+  // 可用字段
+  getAvailableFields: () => api.get<AvailableField[]>('/sms/available-fields'),
+
+  // 短信配置
+  getConfig: (communityId: number) => api.get<SmsConfig | null>(`/sms/config/${communityId}`),
+  saveConfig: (data: {
+    community_id: number;
+    access_key_id: string;
+    access_key_secret: string;
+    enabled?: boolean;
+  }) => api.post('/sms/config', data),
+
+  // 短信模板
+  getTemplates: (communityId: number) =>
+    api.get<SmsTemplate[]>('/sms/templates', { params: { community_id: communityId } }),
+  getTemplate: (id: number) => api.get<SmsTemplate>(`/sms/templates/${id}`),
+  createTemplate: (data: {
+    community_id: number;
+    name: string;
+    template_code: string;
+    sign_name: string;
+    content_preview?: string;
+    variable_mapping?: Record<string, string>;
+  }) => api.post('/sms/templates', data),
+  updateTemplate: (id: number, data: Partial<SmsTemplate>) =>
+    api.put(`/sms/templates/${id}`, data),
+  deleteTemplate: (id: number) => api.delete(`/sms/templates/${id}`),
+
+  // 发送短信
+  getBuildings: (communityId: number) => api.get<PhaseBuildings[]>(`/sms/buildings/${communityId}`),
+  preview: (data: {
+    community_id: number;
+    task_type: 'vote_notice' | 'community_notice';
+    round_id?: number;
+    target_selections?: TargetSelection[];
+    target_filter?: 'all' | 'not_voted';
+  }) => api.post<SmsPreviewResult>('/sms/preview', data),
+  send: (data: {
+    community_id: number;
+    template_id: number;
+    task_type: 'vote_notice' | 'community_notice';
+    round_id?: number;
+    target_selections?: TargetSelection[];
+    target_filter?: 'all' | 'not_voted';
+  }) => api.post<{ task_id: number; message: string }>('/sms/send', data),
+
+  // 发送记录
+  getTasks: (params: { community_id: number; page?: number; limit?: number }) =>
+    api.get<{ tasks: SmsTask[]; pagination: { total: number; page: number; limit: number; pages: number } }>(
+      '/sms/tasks',
+      { params }
+    ),
+  getTask: (id: number) => api.get<SmsTask>(`/sms/tasks/${id}`),
+  getTaskLogs: (taskId: number, params?: { page?: number; limit?: number; status?: string }) =>
+    api.get<{ logs: SmsLog[]; pagination: { total: number; page: number; limit: number; pages: number } }>(
+      `/sms/tasks/${taskId}/logs`,
+      { params }
+    ),
 };
 
 export default api;
