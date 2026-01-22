@@ -42,7 +42,7 @@ router.get('/', authMiddleware, async (req, res) => {
   try {
     const {
       page = 1,
-      limit = 20,
+      limit: rawLimit = 20,
       search,
       phase_id,
       community_id,
@@ -53,7 +53,10 @@ router.get('/', authMiddleware, async (req, res) => {
       house_status
     } = req.query;
 
-    const offset = (page - 1) * limit;
+    // 限制 limit 最大值为 100，防止内存溢出
+    const limit = Math.min(parseInt(rawLimit) || 20, 100);
+    const pageNum = parseInt(page) || 1;
+    const offset = (pageNum - 1) * limit;
     let whereConditions = ['1=1'];
     let params = [];
     let joinParams = [];
@@ -135,13 +138,13 @@ router.get('/', authMiddleware, async (req, res) => {
       WHERE ${whereClause}
       ORDER BY o.phase_id, o.building, o.unit, o.room
       LIMIT ? OFFSET ?
-    `, [...joinParams, ...params, parseInt(limit), parseInt(offset)]);
+    `, [...joinParams, ...params, limit, offset]);
 
     res.json({
       data: owners,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: pageNum,
+        limit,
         total: countResult[0].total,
         totalPages: Math.ceil(countResult[0].total / limit)
       }
