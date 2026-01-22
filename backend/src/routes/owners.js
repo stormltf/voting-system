@@ -504,7 +504,7 @@ router.delete('/:id', authMiddleware, adminMiddleware, async (req, res) => {
   }
 });
 
-// 批量导入业主数据（管理员可操作） - 性能优化版
+// 批量导入业主数据（管理员可操作） - 内存优化版：边读取边处理，分批插入
 router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
@@ -540,24 +540,6 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
     }
 
     const headers = (sheet.getRow(1).values || []).slice(1).map(v => String(v || '').trim());
-    const data = [];
-    for (let r = 2; r <= sheet.rowCount; r++) {
-      const row = sheet.getRow(r);
-      if (!row || !row.values || row.values.length <= 1) continue;
-      const obj = {};
-      for (let c = 1; c <= headers.length; c++) {
-        const key = headers[c - 1];
-        if (!key) continue;
-        const cellValue = row.getCell(c).value;
-        if (cellValue === null || cellValue === undefined || cellValue === '') continue;
-        obj[key] = typeof cellValue === 'object' && cellValue.text ? cellValue.text : cellValue;
-      }
-      if (Object.keys(obj).length > 0) data.push(obj);
-    }
-
-    if (data.length === 0) {
-      return res.status(400).json({ error: '文件中没有数据' });
-    }
 
     // 列名映射
     const columnMap = {
@@ -575,53 +557,43 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
       '房屋状态': 'house_status'
     };
 
-    const bulkData = [];
-    const errors = [];
-    let failCount = 0;
-
-    // 预处理数据
-    for (let i = 0; i < data.length; i++) {
-      const row = data[i];
-      try {
-        const owner = {};
-        for (const [cnName, enName] of Object.entries(columnMap)) {
-          if (row[cnName] !== undefined) {
-            owner[enName] = row[cnName];
-          }
+    // 辅助函数：处理单行数据
+    const processRow = (rowData, rowIndex) => {
+      const owner = {};
+      for (const [cnName, enName] of Object.entries(columnMap)) {
+        if (rowData[cnName] !== undefined) {
+          owner[enName] = rowData[cnName];
         }
+      }
 
-        if (!owner.room_number) {
-          failCount++;
-          errors.push(`第 ${row['序号'] || (i + 1)} 行: 缺少房间号`);
-          continue;
-        }
+      if (!owner.room_number) {
+        return { error: `第 ${rowData['序号'] || rowIndex} 行: 缺少房间号` };
+      }
 
-        // 解析房间号 (格式: 01-01-0101 -> 楼号-单元-房间)
-        const roomParts = String(owner.room_number).split('-');
-        let building = null, unit = null, room = null;
-        if (roomParts.length >= 3) {
-          building = roomParts[0];
-          unit = roomParts[1];
-          room = roomParts.slice(2).join('-');
-        } else {
-          // 如果不符合 B-U-R 格式，尝试将整个字符串作为房间号
-          // 这样可以支持只有房间号的情况（如 "101"）
-          room = owner.room_number;
-        }
+      // 解析房间号 (格式: 01-01-0101 -> 楼号-单元-房间)
+      const roomParts = String(owner.room_number).split('-');
+      let building = null, unit = null, room = null;
+      if (roomParts.length >= 3) {
+        building = roomParts[0];
+        unit = roomParts[1];
+        room = roomParts.slice(2).join('-');
+      } else {
+        room = owner.room_number;
+      }
 
-        // 处理面积
-        let area = null;
-        if (owner.area) {
-          area = parseFloat(String(owner.area).replace('+', '')) || null;
-        }
+      // 处理面积
+      let area = null;
+      if (owner.area) {
+        area = parseFloat(String(owner.area).replace('+', '')) || null;
+      }
 
-        let parking_area = null;
-        if (owner.parking_area) {
-          parking_area = parseFloat(String(owner.parking_area)) || null;
-        }
+      let parking_area = null;
+      if (owner.parking_area) {
+        parking_area = parseFloat(String(owner.parking_area)) || null;
+      }
 
-        // 构造数据数组 [phase_id, seq_no, building, unit, room, room_number, owner_name, area, parking_no, parking_area, phone1, phone2, phone3, wechat_status, wechat_contact, house_status]
-        bulkData.push([
+      return {
+        data: [
           phase_id,
           owner.seq_no || null,
           building,
@@ -638,42 +610,88 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
           owner.wechat_status || '',
           owner.wechat_contact || null,
           owner.house_status || null
-        ]);
+        ]
+      };
+    };
 
+    // 辅助函数：批量插入数据库
+    const insertBatch = async (batch) => {
+      if (batch.length === 0) return;
+      await pool.query(`
+        INSERT INTO owners (phase_id, seq_no, building, unit, room, room_number,
+          owner_name, area, parking_no, parking_area,
+          phone1, phone2, phone3, wechat_status, wechat_contact, house_status)
+        VALUES ?
+        ON DUPLICATE KEY UPDATE
+          seq_no = VALUES(seq_no),
+          owner_name = VALUES(owner_name),
+          area = VALUES(area),
+          parking_no = VALUES(parking_no),
+          parking_area = VALUES(parking_area),
+          phone1 = VALUES(phone1),
+          phone2 = VALUES(phone2),
+          phone3 = VALUES(phone3),
+          wechat_status = VALUES(wechat_status),
+          wechat_contact = VALUES(wechat_contact),
+          house_status = VALUES(house_status)
+      `, [batch]);
+    };
+
+    const BATCH_SIZE = 500; // 每批处理500条，减少内存压力
+    let currentBatch = [];
+    const errors = [];
+    let successCount = 0;
+    let failCount = 0;
+    let totalRows = 0;
+
+    // 边读取边处理：逐行处理 Excel 数据
+    for (let r = 2; r <= sheet.rowCount; r++) {
+      const row = sheet.getRow(r);
+      if (!row || !row.values || row.values.length <= 1) continue;
+
+      // 解析当前行
+      const rowData = {};
+      for (let c = 1; c <= headers.length; c++) {
+        const key = headers[c - 1];
+        if (!key) continue;
+        const cellValue = row.getCell(c).value;
+        if (cellValue === null || cellValue === undefined || cellValue === '') continue;
+        rowData[key] = typeof cellValue === 'object' && cellValue.text ? cellValue.text : cellValue;
+      }
+
+      if (Object.keys(rowData).length === 0) continue;
+      totalRows++;
+
+      // 处理当前行
+      try {
+        const result = processRow(rowData, r);
+        if (result.error) {
+          failCount++;
+          if (errors.length < 10) errors.push(result.error);
+        } else {
+          currentBatch.push(result.data);
+        }
       } catch (err) {
         failCount++;
-        errors.push(`第 ${row['序号'] || (i + 1)} 行: 数据格式错误`);
+        if (errors.length < 10) errors.push(`第 ${rowData['序号'] || r} 行: 数据格式错误`);
+      }
+
+      // 达到批次大小时，执行插入并清空批次
+      if (currentBatch.length >= BATCH_SIZE) {
+        await insertBatch(currentBatch);
+        successCount += currentBatch.length;
+        currentBatch = []; // 清空数组，释放内存
       }
     }
 
-    // 批量执行插入/更新
-    let successCount = 0;
-    if (bulkData.length > 0) {
-      const BATCH_SIZE = 1000;
-      for (let i = 0; i < bulkData.length; i += BATCH_SIZE) {
-        const batch = bulkData.slice(i, i + BATCH_SIZE);
+    // 处理剩余的数据
+    if (currentBatch.length > 0) {
+      await insertBatch(currentBatch);
+      successCount += currentBatch.length;
+    }
 
-        await pool.query(`
-          INSERT INTO owners (phase_id, seq_no, building, unit, room, room_number,
-            owner_name, area, parking_no, parking_area,
-            phone1, phone2, phone3, wechat_status, wechat_contact, house_status)
-          VALUES ?
-          ON DUPLICATE KEY UPDATE
-            seq_no = VALUES(seq_no),
-            owner_name = VALUES(owner_name),
-            area = VALUES(area),
-            parking_no = VALUES(parking_no),
-            parking_area = VALUES(parking_area),
-            phone1 = VALUES(phone1),
-            phone2 = VALUES(phone2),
-            phone3 = VALUES(phone3),
-            wechat_status = VALUES(wechat_status),
-            wechat_contact = VALUES(wechat_contact),
-            house_status = VALUES(house_status)
-        `, [batch]);
-
-        successCount += batch.length;
-      }
+    if (totalRows === 0) {
+      return res.status(400).json({ error: '文件中没有数据' });
     }
 
     // 记录日志
@@ -687,7 +705,7 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
       message: `导入完成: 成功 ${successCount} 条, 失败 ${failCount} 条`,
       successCount,
       failCount,
-      errors: errors.slice(0, 10) // 只返回前10个错误
+      errors: errors.slice(0, 10)
     });
   } catch (error) {
     console.error('导入业主数据错误:', error);
