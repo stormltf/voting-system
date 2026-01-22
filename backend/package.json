@@ -4,9 +4,8 @@
   "description": "业主大会投票管理系统后端",
   "main": "src/index.js",
   "scripts": {
-    "start": "node --max-old-space-size=512 src/index.js",
-    "start:low-mem": "node --max-old-space-size=384 src/index.js",
-    "dev": "nodemon --node-options='--max-old-space-size=512' src/index.js",
+    "start": "node --max-old-space-size=384 src/index.js",
+    "dev": "nodemon --node-options='--max-old-space-size=384' src/index.js",
     "test": "jest --coverage",
     "test:watch": "jest --watch",
     "lint": "eslint src/"
