@@ -230,8 +230,11 @@ router.delete('/rounds/:id', authMiddleware, adminMiddleware, async (req, res) =
 // 获取投票记录
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const { round_id, phase_id, building, unit, community_id, vote_status, sweep_status, search, page = 1, limit = 20 } = req.query;
-    const offset = (page - 1) * limit;
+    const { round_id, phase_id, building, unit, community_id, vote_status, sweep_status, search, page = 1, limit: rawLimit = 20 } = req.query;
+    // 限制 limit 最大值为 100，防止内存溢出
+    const limit = Math.min(parseInt(rawLimit) || 20, 100);
+    const pageNum = parseInt(page) || 1;
+    const offset = (pageNum - 1) * limit;
 
     let whereConditions = ['1=1'];
     let params = [];
@@ -305,13 +308,13 @@ router.get('/', authMiddleware, async (req, res) => {
       WHERE ${whereClause}
       ORDER BY o.room_number ASC
       LIMIT ? OFFSET ?
-    `, [...params, parseInt(limit), parseInt(offset)]);
+    `, [...params, limit, offset]);
 
     res.json({
       data: votes,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: pageNum,
+        limit,
         total: countResult[0].total,
         totalPages: Math.ceil(countResult[0].total / limit)
       }
