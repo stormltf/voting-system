@@ -31,15 +31,15 @@ async function getCommunityIdByOwner(ownerId) {
   return owners.length > 0 ? owners[0].community_id : null;
 }
 
-// 配置文件上传（内存优化：限制文件大小为 2MB）
+// 配置文件上传（内存优化：限制文件大小为 1MB）
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 2 * 1024 * 1024 } // 限制 2MB，防止大文件导致 OOM
+  limits: { fileSize: 1 * 1024 * 1024 } // 限制 1MB，防止大文件导致 OOM
 });
 
-// 内存优化：最大允许导入/导出的行数
-const MAX_IMPORT_ROWS = 5000;
-const MAX_EXPORT_ROWS = 10000;
+// 内存优化：最大允许导入/导出的行数（适配 250MB 堆内存）
+const MAX_IMPORT_ROWS = 2000;
+const MAX_EXPORT_ROWS = 5000;
 
 // 获取业主列表（支持分页、搜索、筛选）
 router.get('/', authMiddleware, async (req, res) => {

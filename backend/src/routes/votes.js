@@ -21,13 +21,13 @@ const ALLOWED_MIME_TYPES = [
   'text/csv'
 ];
 
-// 内存优化：限制导入/导出的最大行数
-const MAX_IMPORT_ROWS = 5000;
-const MAX_EXPORT_ROWS = 10000;
+// 内存优化：限制导入/导出的最大行数（适配 250MB 堆内存）
+const MAX_IMPORT_ROWS = 2000;
+const MAX_EXPORT_ROWS = 5000;
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 2 * 1024 * 1024 }, // 内存优化：限制 2MB
+  limits: { fileSize: 1 * 1024 * 1024 }, // 内存优化：限制 1MB
   fileFilter: (req, file, cb) => {
     // 检查文件扩展名
     const ext = file.originalname.toLowerCase().split('.').pop();
