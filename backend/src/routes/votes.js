@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 const express = require('express');
 const multer = require('multer');
-const ExcelJS = require('exceljs');
+const XLSX = require('xlsx');
 const { pool } = require('../models/db');
 const {
   authMiddleware,
@@ -21,13 +21,9 @@ const ALLOWED_MIME_TYPES = [
   'text/csv'
 ];
 
-// 内存优化：限制导入/导出的最大行数（适配 250MB 堆内存）
-const MAX_IMPORT_ROWS = 2000;
-const MAX_EXPORT_ROWS = 5000;
-
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 1 * 1024 * 1024 }, // 内存优化：限制 1MB
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
   fileFilter: (req, file, cb) => {
     // 检查文件扩展名
     const ext = file.originalname.toLowerCase().split('.').pop();
@@ -235,8 +231,7 @@ router.delete('/rounds/:id', authMiddleware, adminMiddleware, async (req, res) =
 router.get('/', authMiddleware, async (req, res) => {
   try {
     const { round_id, phase_id, building, unit, community_id, vote_status, sweep_status, search, page = 1, limit: rawLimit = 20 } = req.query;
-    // 限制 limit 最大值为 100，防止内存溢出
-    const limit = Math.min(parseInt(rawLimit) || 20, 100);
+    const limit = parseInt(rawLimit) || 20;
     const pageNum = parseInt(page) || 1;
     const offset = (pageNum - 1) * limit;
 
@@ -538,22 +533,21 @@ router.post('/import', authMiddleware, adminMiddleware, (req, res, next) => {
       return res.status(403).json({ error: '无权管理该小区' });
     }
 
-    // Parse Excel (exceljs)
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(req.file.buffer);
-    const sheet = workbook.worksheets[0];
-    if (!sheet || sheet.rowCount < 2) {
+    // Parse Excel (xlsx - 轻量级库)
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) {
       return res.status(400).json({ error: 'Excel 文件为空或格式错误' });
     }
 
-    // 内存优化：限制最大导入行数
-    if (sheet.rowCount > MAX_IMPORT_ROWS + 1) {
-      return res.status(400).json({
-        error: `数据量过大，最多支持导入 ${MAX_IMPORT_ROWS} 条记录，当前文件包含 ${sheet.rowCount - 1} 条`
-      });
+    // 转换为二维数组（包含表头）
+    const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+    if (rawData.length < 2) {
+      return res.status(400).json({ error: 'Excel 文件为空或格式错误' });
     }
 
-    const headers = (sheet.getRow(1).values || []).slice(1).map(v => String(v || '').trim());
+    const headers = rawData[0].map(v => String(v || '').trim());
 
     // Find Room Column
     const roomColIndex = headers.findIndex(h =>
@@ -601,14 +595,13 @@ router.post('/import', authMiddleware, adminMiddleware, (req, res, next) => {
     let pendingCount = 0;
     let notFoundCount = 0;
 
-    for (let r = 2; r <= sheet.rowCount; r++) {
-      const row = sheet.getRow(r);
-      if (!row || !row.values || row.values.length <= 1) continue;
+    for (let r = 1; r < rawData.length; r++) {
+      const row = rawData[r];
+      if (!row || row.length === 0) continue;
 
       const getCellValue = (idx) => {
-        if (idx === -1) return null;
-        const cell = row.getCell(idx + 1);
-        const val = cell.value;
+        if (idx === -1 || idx >= row.length) return null;
+        const val = row[idx];
         return (typeof val === 'object' && val.text) ? val.text : val;
       };
 
@@ -738,24 +731,7 @@ router.get('/export', authMiddleware, async (req, res) => {
 
     const whereClause = whereConditions.join(' AND ');
 
-    // 内存优化：先检查数据量
-    const [countResult] = await pool.query(`
-      SELECT COUNT(*) as total
-      FROM owners o
-      JOIN phases p ON o.phase_id = p.id
-      JOIN communities c ON p.community_id = c.id
-      LEFT JOIN votes v ON o.id = v.owner_id AND v.round_id = ?
-      WHERE ${whereClause}
-    `, [round_id, ...params]);
-
-    const totalCount = countResult[0].total;
-    if (totalCount > MAX_EXPORT_ROWS) {
-      return res.status(400).json({
-        error: `数据量过大（${totalCount} 条），最多支持导出 ${MAX_EXPORT_ROWS} 条记录，请添加筛选条件`
-      });
-    }
-
-    // 获取投票数据（添加 LIMIT 保护）
+    // 获取投票数据
     const [records] = await pool.query(`
       SELECT
         o.seq_no,
@@ -787,8 +763,7 @@ router.get('/export', authMiddleware, async (req, res) => {
       LEFT JOIN vote_rounds r ON r.id = ?
       WHERE ${whereClause}
       ORDER BY p.name, o.building, o.unit, o.room
-      LIMIT ?
-    `, [round_id, round_id, ...params, MAX_EXPORT_ROWS]);
+    `, [round_id, round_id, ...params]);
 
     // 投票状态映射
     const voteStatusMap = {
@@ -822,37 +797,35 @@ router.get('/export', authMiddleware, async (req, res) => {
       '备注': record.remark || '',
     }));
 
-    // 创建工作簿（exceljs）
-    const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet('投票记录');
+    // 创建工作簿（xlsx - 轻量级库）
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(excelData);
 
-    ws.columns = [
-      { header: '序号', key: '序号', width: 6 },
-      { header: '小区', key: '小区', width: 15 },
-      { header: '期数', key: '期数', width: 10 },
-      { header: '房间号', key: '房间号', width: 15 },
-      { header: '楼栋', key: '楼栋', width: 8 },
-      { header: '单元', key: '单元', width: 8 },
-      { header: '房号', key: '房号', width: 8 },
-      { header: '业主姓名', key: '业主姓名', width: 12 },
-      { header: '面积', key: '面积', width: 10 },
-      { header: '车位号', key: '车位号', width: 12 },
-      { header: '车位面积', key: '车位面积', width: 10 },
-      { header: '联系电话1', key: '联系电话1', width: 15 },
-      { header: '联系电话2', key: '联系电话2', width: 15 },
-      { header: '联系电话3', key: '联系电话3', width: 15 },
-      { header: '投票状态', key: '投票状态', width: 10 },
-      { header: '投票电话', key: '投票电话', width: 15 },
-      { header: '投票日期', key: '投票日期', width: 12 },
-      { header: '扫楼状态', key: '扫楼状态', width: 15 },
-      { header: '备注', key: '备注', width: 25 },
+    // 设置列宽
+    ws['!cols'] = [
+      { wch: 6 },   // 序号
+      { wch: 15 },  // 小区
+      { wch: 10 },  // 期数
+      { wch: 15 },  // 房间号
+      { wch: 8 },   // 楼栋
+      { wch: 8 },   // 单元
+      { wch: 8 },   // 房号
+      { wch: 12 },  // 业主姓名
+      { wch: 10 },  // 面积
+      { wch: 12 },  // 车位号
+      { wch: 10 },  // 车位面积
+      { wch: 15 },  // 联系电话1
+      { wch: 15 },  // 联系电话2
+      { wch: 15 },  // 联系电话3
+      { wch: 10 },  // 投票状态
+      { wch: 15 },  // 投票电话
+      { wch: 12 },  // 投票日期
+      { wch: 15 },  // 扫楼状态
+      { wch: 25 },  // 备注
     ];
 
-    for (const row of excelData) {
-      ws.addRow(row);
-    }
-
-    const buffer = Buffer.from(await wb.xlsx.writeBuffer());
+    XLSX.utils.book_append_sheet(wb, ws, '投票记录');
+    const buffer = Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
     const roundName = records[0]?.round_name || '投票';
 
     // 设置响应头

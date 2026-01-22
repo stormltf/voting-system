@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 const express = require('express');
 const multer = require('multer');
-const ExcelJS = require('exceljs');
+const XLSX = require('xlsx');
 const { pool } = require('../models/db');
 const {
   authMiddleware,
@@ -31,15 +31,11 @@ async function getCommunityIdByOwner(ownerId) {
   return owners.length > 0 ? owners[0].community_id : null;
 }
 
-// 配置文件上传（内存优化：限制文件大小为 1MB）
+// 配置文件上传
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 1 * 1024 * 1024 } // 限制 1MB，防止大文件导致 OOM
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB
 });
-
-// 内存优化：最大允许导入/导出的行数（适配 250MB 堆内存）
-const MAX_IMPORT_ROWS = 2000;
-const MAX_EXPORT_ROWS = 5000;
 
 // 获取业主列表（支持分页、搜索、筛选）
 router.get('/', authMiddleware, async (req, res) => {
@@ -57,8 +53,7 @@ router.get('/', authMiddleware, async (req, res) => {
       house_status
     } = req.query;
 
-    // 限制 limit 最大值为 100，防止内存溢出
-    const limit = Math.min(parseInt(rawLimit) || 20, 100);
+    const limit = parseInt(rawLimit) || 20;
     const pageNum = parseInt(page) || 1;
     const offset = (pageNum - 1) * limit;
     let whereConditions = ['1=1'];
@@ -213,24 +208,7 @@ router.get('/export', authMiddleware, async (req, res) => {
 
     const whereClause = whereConditions.join(' AND ');
 
-    // 内存优化：先检查数据量，超过限制则拒绝
-    const [countResult] = await pool.query(`
-      SELECT COUNT(*) as total
-      FROM owners o
-      JOIN phases p ON o.phase_id = p.id
-      JOIN communities c ON p.community_id = c.id
-      ${voteJoin}
-      WHERE ${whereClause}
-    `, [...joinParams, ...params]);
-
-    const totalCount = countResult[0].total;
-    if (totalCount > MAX_EXPORT_ROWS) {
-      return res.status(400).json({
-        error: `数据量过大（${totalCount} 条），最多支持导出 ${MAX_EXPORT_ROWS} 条记录，请添加筛选条件`
-      });
-    }
-
-    // 获取数据（添加 LIMIT 保护）
+    // 获取数据
     const [owners] = await pool.query(`
       SELECT o.*, p.name as phase_name, c.name as community_name
              ${voteSelect}
@@ -240,8 +218,7 @@ router.get('/export', authMiddleware, async (req, res) => {
       ${voteJoin}
       WHERE ${whereClause}
       ORDER BY o.phase_id, o.building, o.unit, o.room
-      LIMIT ?
-    `, [...joinParams, ...params, MAX_EXPORT_ROWS]);
+    `, [...joinParams, ...params]);
 
     // 投票状态映射
     const voteStatusMap = {
@@ -285,45 +262,42 @@ router.get('/export', authMiddleware, async (req, res) => {
       return row;
     });
 
-    // 创建工作簿（使用 exceljs，避免 xlsx 已知漏洞）
-    const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet('业主数据');
+    // 创建工作簿（使用轻量级 xlsx 库）
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(excelData);
 
-    const columns = [
-      { header: '序号', key: '序号', width: 6 },
-      { header: '小区', key: '小区', width: 15 },
-      { header: '期数', key: '期数', width: 10 },
-      { header: '房间号', key: '房间号', width: 15 },
-      { header: '楼栋', key: '楼栋', width: 8 },
-      { header: '单元', key: '单元', width: 8 },
-      { header: '房号', key: '房号', width: 8 },
-      { header: '业主姓名', key: '业主姓名', width: 12 },
-      { header: '面积', key: '面积', width: 10 },
-      { header: '车位号', key: '车位号', width: 12 },
-      { header: '车位面积', key: '车位面积', width: 10 },
-      { header: '联系电话1', key: '联系电话1', width: 15 },
-      { header: '联系电话2', key: '联系电话2', width: 15 },
-      { header: '联系电话3', key: '联系电话3', width: 15 },
-      { header: '群状态', key: '群状态', width: 10 },
-      { header: '微信沟通人', key: '微信沟通人', width: 12 },
-      { header: '房屋状态', key: '房屋状态', width: 10 },
+    // 设置列宽
+    ws['!cols'] = [
+      { wch: 6 },  // 序号
+      { wch: 15 }, // 小区
+      { wch: 10 }, // 期数
+      { wch: 15 }, // 房间号
+      { wch: 8 },  // 楼栋
+      { wch: 8 },  // 单元
+      { wch: 8 },  // 房号
+      { wch: 12 }, // 业主姓名
+      { wch: 10 }, // 面积
+      { wch: 12 }, // 车位号
+      { wch: 10 }, // 车位面积
+      { wch: 15 }, // 联系电话1
+      { wch: 15 }, // 联系电话2
+      { wch: 15 }, // 联系电话3
+      { wch: 10 }, // 群状态
+      { wch: 12 }, // 微信沟通人
+      { wch: 10 }, // 房屋状态
     ];
 
     if (round_id) {
-      columns.push(
-        { header: '投票状态', key: '投票状态', width: 10 },
-        { header: '投票日期', key: '投票日期', width: 12 },
-        { header: '扫楼状态', key: '扫楼状态', width: 15 },
-        { header: '投票备注', key: '投票备注', width: 20 },
+      ws['!cols'].push(
+        { wch: 10 }, // 投票状态
+        { wch: 12 }, // 投票日期
+        { wch: 15 }, // 扫楼状态
+        { wch: 20 }, // 投票备注
       );
     }
 
-    ws.columns = columns;
-    for (const row of excelData) {
-      ws.addRow(row);
-    }
-
-    const buffer = Buffer.from(await wb.xlsx.writeBuffer());
+    XLSX.utils.book_append_sheet(wb, ws, '业主数据');
+    const buffer = Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
 
     // 设置响应头
     const filename = encodeURIComponent(`业主数据_${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -556,22 +530,21 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
       return res.status(403).json({ error: '无权管理该小区数据' });
     }
 
-    // 解析 Excel 文件（使用轻量级选项减少内存占用）
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(req.file.buffer);
-    const sheet = workbook.worksheets[0];
-    if (!sheet || sheet.rowCount < 2) {
+    // 解析 Excel 文件（使用轻量级 xlsx 库）
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) {
       return res.status(400).json({ error: '文件中没有数据' });
     }
 
-    // 内存优化：限制最大导入行数，防止 OOM
-    if (sheet.rowCount > MAX_IMPORT_ROWS + 1) {
-      return res.status(400).json({
-        error: `数据量过大，最多支持导入 ${MAX_IMPORT_ROWS} 条记录，当前文件包含 ${sheet.rowCount - 1} 条`
-      });
+    // 转换为 JSON 数组（第一行作为表头）
+    const jsonData = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+    if (jsonData.length === 0) {
+      return res.status(400).json({ error: '文件中没有数据' });
     }
 
-    const headers = (sheet.getRow(1).values || []).slice(1).map(v => String(v || '').trim());
+    const headers = Object.keys(jsonData[0]);
 
     // 列名映射
     const columnMap = {
@@ -679,27 +652,15 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
     let failCount = 0;
     let totalRows = 0;
 
-    // 逐行处理 Excel 数据，不保存整个数据集
-    for (let r = 2; r <= sheet.rowCount; r++) {
-      const row = sheet.getRow(r);
-      if (!row || !row.values || row.values.length <= 1) continue;
-
-      // 解析当前行
-      const rowData = {};
-      for (let c = 1; c <= headers.length; c++) {
-        const key = headers[c - 1];
-        if (!key) continue;
-        const cellValue = row.getCell(c).value;
-        if (cellValue === null || cellValue === undefined || cellValue === '') continue;
-        rowData[key] = typeof cellValue === 'object' && cellValue.text ? cellValue.text : cellValue;
-      }
-
+    // 逐行处理 Excel 数据
+    for (let i = 0; i < jsonData.length; i++) {
+      const rowData = jsonData[i];
       if (Object.keys(rowData).length === 0) continue;
       totalRows++;
 
       // 处理当前行
       try {
-        const result = processRow(rowData, r);
+        const result = processRow(rowData, i + 2);
         if (result.error) {
           failCount++;
           if (errors.length < 10) errors.push(result.error);
@@ -708,7 +669,7 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
         }
       } catch (err) {
         failCount++;
-        if (errors.length < 10) errors.push(`第 ${rowData['序号'] || r} 行: 数据格式错误`);
+        if (errors.length < 10) errors.push(`第 ${rowData['序号'] || i + 2} 行: 数据格式错误`);
       }
 
       // 达到批次大小时，执行插入并清空批次

@@ -23,8 +23,7 @@ router.get('/', authMiddleware, async (req, res) => {
       search,
     } = req.query;
 
-    // 内存优化：限制 limit 最大值为 100
-    const limit = Math.min(parseInt(rawLimit) || 20, 100);
+    const limit = parseInt(rawLimit) || 20;
     const offset = (parseInt(page) - 1) * limit;
     let whereClause = '1=1';
     const params = [];
