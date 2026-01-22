@@ -1,5 +1,5 @@
 const request = require('supertest');
-const ExcelJS = require('exceljs');
+const XLSX = require('xlsx');
 
 // Mock 数据库模块
 jest.mock('../../src/models/db', () => require('../mocks/db'));
@@ -9,28 +9,28 @@ const { generateToken, ROLES } = require('../../src/middleware/auth');
 const { app } = require('../../src/index');
 
 // Helper function to create Excel buffer for testing
-async function createExcelBuffer(data, sheetName = 'Sheet1') {
-  const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet(sheetName);
+function createExcelBuffer(data, sheetName = 'Sheet1') {
+  const wb = XLSX.utils.book_new();
+  let ws;
 
   if (!Array.isArray(data) || data.length === 0) {
-    ws.addRow(['占位']);
+    ws = XLSX.utils.aoa_to_sheet([['占位']]);
   } else {
     // Determine headers from data (either array of arrays or array of objects)
     if (Array.isArray(data[0])) {
-      for (const row of data) {
-        ws.addRow(row);
-      }
+      ws = XLSX.utils.aoa_to_sheet(data);
     } else {
       const headers = Object.keys(data[0]);
-      ws.addRow(headers);
+      const rows = [headers];
       for (const item of data) {
-        ws.addRow(headers.map(h => item[h]));
+        rows.push(headers.map(h => item[h]));
       }
+      ws = XLSX.utils.aoa_to_sheet(rows);
     }
   }
 
-  return Buffer.from(await wb.xlsx.writeBuffer());
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  return Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
 }
 
 describe('Votes Routes', () => {
@@ -1206,8 +1206,7 @@ describe('Votes Routes', () => {
         const mockRecords = [
           { seq_no: 1, room_number: '01-01-0101', building: '01', unit: '01', room: '0101', owner_name: '张三', community_name: '阳光花园', phase_name: '一期', round_name: '2024', vote_status: 'voted' }
         ];
-        // Mock COUNT query + SELECT query
-        pool.query.mockResolvedValueOnce([[{ total: 1 }]]);
+        // 导出路由只有一个 SELECT 查询
         pool.query.mockResolvedValueOnce([mockRecords]);
 
         const response = await request(app)
@@ -1219,7 +1218,6 @@ describe('Votes Routes', () => {
       });
 
       it('应该支持按状态筛选导出', async () => {
-        pool.query.mockResolvedValueOnce([[{ total: 1 }]]);
         pool.query.mockResolvedValueOnce([[{ seq_no: 1, vote_status: 'pending' }]]);
 
         const response = await request(app)
@@ -1230,7 +1228,6 @@ describe('Votes Routes', () => {
       });
 
       it('应该支持搜索导出', async () => {
-        pool.query.mockResolvedValueOnce([[{ total: 1 }]]);
         pool.query.mockResolvedValueOnce([[{ seq_no: 1, owner_name: '张三' }]]);
 
         const response = await request(app)
@@ -1241,7 +1238,6 @@ describe('Votes Routes', () => {
       });
 
       it('普通用户只能导出本小区的数据', async () => {
-        pool.query.mockResolvedValueOnce([[{ total: 1 }]]);
         pool.query.mockResolvedValueOnce([[{ seq_no: 1, vote_status: 'voted' }]]);
 
         const response = await request(app)
@@ -1249,17 +1245,6 @@ describe('Votes Routes', () => {
           .set('Authorization', `Bearer ${communityUserToken}`);
 
         expect(response.status).toBe(200);
-      });
-
-      it('应该拒绝超过限制的导出', async () => {
-        pool.query.mockResolvedValueOnce([[{ total: 20000 }]]);
-
-        const response = await request(app)
-          .get('/api/votes/export?round_id=1')
-          .set('Authorization', `Bearer ${superAdminToken}`);
-
-        expect(response.status).toBe(400);
-        expect(response.body.error).toContain('数据量过大');
       });
 
       it('应该处理服务器错误', async () => {
@@ -1507,10 +1492,10 @@ describe('Votes Routes', () => {
       });
 
       it('应该处理大批量数据导入', async () => {
-        // 创建超过1000条记录的数据
+        // 创建超过200条记录的数据（批次大小为200）
         const excelData = [['房间号', '投否']];
         const mockOwners = [];
-        for (let i = 1; i <= 1500; i++) {
+        for (let i = 1; i <= 500; i++) {
           const room = `01-01-${String(i).padStart(4, '0')}`;
           excelData.push([room, '是']);
           mockOwners.push({ id: i, room_number: room });
@@ -1518,9 +1503,10 @@ describe('Votes Routes', () => {
         const excelBuffer = await createExcelBuffer(excelData);
 
         pool.query.mockResolvedValueOnce([mockOwners]);
-        // 两次批量插入（1000 + 500）
-        pool.query.mockResolvedValueOnce([{ affectedRows: 1000 }]);
-        pool.query.mockResolvedValueOnce([{ affectedRows: 500 }]);
+        // 三次批量插入（200 + 200 + 100）
+        pool.query.mockResolvedValueOnce([{ affectedRows: 200 }]);
+        pool.query.mockResolvedValueOnce([{ affectedRows: 200 }]);
+        pool.query.mockResolvedValueOnce([{ affectedRows: 100 }]);
         pool.query.mockResolvedValueOnce([{ insertId: 1 }]);
 
         const response = await request(app)
@@ -1534,7 +1520,7 @@ describe('Votes Routes', () => {
           });
 
         expect(response.status).toBe(200);
-        expect(response.body.success).toBe(1500);
+        expect(response.body.success).toBe(500);
       });
 
       it('小区管理员可以导入本小区的数据', async () => {

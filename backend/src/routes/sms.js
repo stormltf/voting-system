@@ -805,7 +805,7 @@ async function sendSms(client, options) {
 // 获取发送任务列表
 router.get('/tasks', authMiddleware, async (req, res) => {
   try {
-    const { community_id, page = 1, limit = 20 } = req.query;
+    const { community_id, page = 1, limit = 3000 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     if (!community_id) {

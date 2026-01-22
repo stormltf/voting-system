@@ -1,5 +1,5 @@
 const request = require('supertest');
-const ExcelJS = require('exceljs');
+const XLSX = require('xlsx');
 
 // Mock 数据库模块
 jest.mock('../../src/models/db', () => require('../mocks/db'));
@@ -9,21 +9,23 @@ const { generateToken, ROLES } = require('../../src/middleware/auth');
 const { app } = require('../../src/index');
 
 // Helper function to create Excel buffer for testing
-async function createOwnerExcelBuffer(data, sheetName = 'Sheet1') {
-  const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet(sheetName);
+function createOwnerExcelBuffer(data, sheetName = 'Sheet1') {
+  const wb = XLSX.utils.book_new();
+  let ws;
 
   if (!Array.isArray(data) || data.length === 0) {
-    ws.addRow(['占位']);
+    ws = XLSX.utils.aoa_to_sheet([['占位']]);
   } else {
     const headers = Object.keys(data[0]);
-    ws.addRow(headers);
+    const rows = [headers];
     for (const item of data) {
-      ws.addRow(headers.map(h => item[h]));
+      rows.push(headers.map(h => item[h]));
     }
+    ws = XLSX.utils.aoa_to_sheet(rows);
   }
 
-  return Buffer.from(await wb.xlsx.writeBuffer());
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  return Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
 }
 
 describe('Owners Routes', () => {
@@ -195,8 +197,7 @@ describe('Owners Routes', () => {
       const mockOwners = [
         { seq_no: 1, community_name: '阳光花园', phase_name: '一期', room_number: '01-01-0101', building: '01', unit: '01', room: '0101', owner_name: '张三' }
       ];
-      // Mock COUNT query + SELECT query
-      pool.query.mockResolvedValueOnce([[{ total: 1 }]]);
+      // 导出路由只有一个 SELECT 查询
       pool.query.mockResolvedValueOnce([mockOwners]);
 
       const response = await request(app)
@@ -208,7 +209,6 @@ describe('Owners Routes', () => {
     });
 
     it('应该支持按期数筛选导出', async () => {
-      pool.query.mockResolvedValueOnce([[{ total: 1 }]]);
       pool.query.mockResolvedValueOnce([[{ seq_no: 1, phase_name: '一期' }]]);
 
       const response = await request(app)
@@ -219,7 +219,6 @@ describe('Owners Routes', () => {
     });
 
     it('应该支持按小区筛选导出', async () => {
-      pool.query.mockResolvedValueOnce([[{ total: 1 }]]);
       pool.query.mockResolvedValueOnce([[{ seq_no: 1, community_id: 1 }]]);
 
       const response = await request(app)
@@ -230,7 +229,6 @@ describe('Owners Routes', () => {
     });
 
     it('应该支持按楼栋筛选导出', async () => {
-      pool.query.mockResolvedValueOnce([[{ total: 1 }]]);
       pool.query.mockResolvedValueOnce([[{ seq_no: 1, building: '01' }]]);
 
       const response = await request(app)
@@ -241,7 +239,6 @@ describe('Owners Routes', () => {
     });
 
     it('应该支持搜索导出', async () => {
-      pool.query.mockResolvedValueOnce([[{ total: 1 }]]);
       pool.query.mockResolvedValueOnce([[{ seq_no: 1, owner_name: '张三' }]]);
 
       const response = await request(app)
@@ -252,7 +249,6 @@ describe('Owners Routes', () => {
     });
 
     it('应该支持带投票信息导出', async () => {
-      pool.query.mockResolvedValueOnce([[{ total: 1 }]]);
       pool.query.mockResolvedValueOnce([[{ seq_no: 1, vote_status: 'voted', vote_date: '2024-01-01' }]]);
 
       const response = await request(app)
@@ -263,7 +259,6 @@ describe('Owners Routes', () => {
     });
 
     it('应该支持按投票状态筛选导出', async () => {
-      pool.query.mockResolvedValueOnce([[{ total: 1 }]]);
       pool.query.mockResolvedValueOnce([[{ seq_no: 1, vote_status: 'pending' }]]);
 
       const response = await request(app)
@@ -274,7 +269,6 @@ describe('Owners Routes', () => {
     });
 
     it('普通用户只能导出本小区的数据', async () => {
-      pool.query.mockResolvedValueOnce([[{ total: 1 }]]);
       pool.query.mockResolvedValueOnce([[{ seq_no: 1, community_id: 1 }]]);
 
       const response = await request(app)
@@ -282,17 +276,6 @@ describe('Owners Routes', () => {
         .set('Authorization', `Bearer ${communityUserToken}`);
 
       expect(response.status).toBe(200);
-    });
-
-    it('应该拒绝超过限制的导出', async () => {
-      pool.query.mockResolvedValueOnce([[{ total: 20000 }]]);
-
-      const response = await request(app)
-        .get('/api/owners/export')
-        .set('Authorization', `Bearer ${superAdminToken}`);
-
-      expect(response.status).toBe(400);
-      expect(response.body.error).toContain('数据量过大');
     });
 
     it('应该处理服务器错误', async () => {

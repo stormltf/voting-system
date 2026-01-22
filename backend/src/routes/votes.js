@@ -230,8 +230,8 @@ router.delete('/rounds/:id', authMiddleware, adminMiddleware, async (req, res) =
 // 获取投票记录
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const { round_id, phase_id, building, unit, community_id, vote_status, sweep_status, search, page = 1, limit: rawLimit = 20 } = req.query;
-    const limit = parseInt(rawLimit) || 20;
+    const { round_id, phase_id, building, unit, community_id, vote_status, sweep_status, search, page = 1, limit: rawLimit = 3000 } = req.query;
+    const limit = parseInt(rawLimit) || 3000;
     const pageNum = parseInt(page) || 1;
     const offset = (pageNum - 1) * limit;
 

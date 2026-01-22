@@ -42,7 +42,7 @@ router.get('/', authMiddleware, async (req, res) => {
   try {
     const {
       page = 1,
-      limit: rawLimit = 20,
+      limit: rawLimit = 3000,
       search,
       phase_id,
       community_id,
@@ -53,7 +53,7 @@ router.get('/', authMiddleware, async (req, res) => {
       house_status
     } = req.query;
 
-    const limit = parseInt(rawLimit) || 20;
+    const limit = parseInt(rawLimit) || 3000;
     const pageNum = parseInt(page) || 1;
     const offset = (pageNum - 1) * limit;
     let whereConditions = ['1=1'];
@@ -307,6 +307,62 @@ router.get('/export', authMiddleware, async (req, res) => {
     res.send(buffer);
   } catch (error) {
     console.error('导出业主数据错误:', error);
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
+  }
+});
+
+// 获取楼栋列表（必须在 /:id 路由之前定义）
+router.get('/buildings/:phaseId', authMiddleware, async (req, res) => {
+  try {
+    const phaseId = parseInt(req.params.phaseId);
+
+    // 检查访问权限
+    const communityId = await getCommunityIdByPhase(phaseId);
+    if (!communityId) {
+      return res.status(404).json({ error: '期数不存在' });
+    }
+    if (!canAccessCommunity(req.user, communityId)) {
+      return res.status(403).json({ error: '无权访问该小区数据' });
+    }
+
+    const [buildings] = await pool.query(`
+      SELECT DISTINCT building
+      FROM owners
+      WHERE phase_id = ? AND building IS NOT NULL
+      ORDER BY building
+    `, [phaseId]);
+
+    res.json(buildings.map(b => b.building));
+  } catch (error) {
+    console.error('获取楼栋列表错误:', error);
+    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
+  }
+});
+
+// 获取单元列表（必须在 /:id 路由之前定义）
+router.get('/units/:phaseId/:building', authMiddleware, async (req, res) => {
+  try {
+    const phaseId = parseInt(req.params.phaseId);
+
+    // 检查访问权限
+    const communityId = await getCommunityIdByPhase(phaseId);
+    if (!communityId) {
+      return res.status(404).json({ error: '期数不存在' });
+    }
+    if (!canAccessCommunity(req.user, communityId)) {
+      return res.status(403).json({ error: '无权访问该小区数据' });
+    }
+
+    const [units] = await pool.query(`
+      SELECT DISTINCT unit
+      FROM owners
+      WHERE phase_id = ? AND building = ? AND unit IS NOT NULL
+      ORDER BY unit
+    `, [phaseId, req.params.building]);
+
+    res.json(units.map(u => u.unit));
+  } catch (error) {
+    console.error('获取单元列表错误:', error);
     res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
@@ -706,62 +762,6 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
   } catch (error) {
     console.error('导入业主数据错误:', error);
     res.status(500).json({ error: '服务器错误' });
-  }
-});
-
-// 获取楼栋列表
-router.get('/buildings/:phaseId', authMiddleware, async (req, res) => {
-  try {
-    const phaseId = parseInt(req.params.phaseId);
-
-    // 检查访问权限
-    const communityId = await getCommunityIdByPhase(phaseId);
-    if (!communityId) {
-      return res.status(404).json({ error: '期数不存在' });
-    }
-    if (!canAccessCommunity(req.user, communityId)) {
-      return res.status(403).json({ error: '无权访问该小区数据' });
-    }
-
-    const [buildings] = await pool.query(`
-      SELECT DISTINCT building
-      FROM owners
-      WHERE phase_id = ? AND building IS NOT NULL
-      ORDER BY building
-    `, [phaseId]);
-
-    res.json(buildings.map(b => b.building));
-  } catch (error) {
-    console.error('获取楼栋列表错误:', error);
-    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
-  }
-});
-
-// 获取单元列表
-router.get('/units/:phaseId/:building', authMiddleware, async (req, res) => {
-  try {
-    const phaseId = parseInt(req.params.phaseId);
-
-    // 检查访问权限
-    const communityId = await getCommunityIdByPhase(phaseId);
-    if (!communityId) {
-      return res.status(404).json({ error: '期数不存在' });
-    }
-    if (!canAccessCommunity(req.user, communityId)) {
-      return res.status(403).json({ error: '无权访问该小区数据' });
-    }
-
-    const [units] = await pool.query(`
-      SELECT DISTINCT unit
-      FROM owners
-      WHERE phase_id = ? AND building = ? AND unit IS NOT NULL
-      ORDER BY unit
-    `, [phaseId, req.params.building]);
-
-    res.json(units.map(u => u.unit));
-  } catch (error) {
-    console.error('获取单元列表错误:', error);
-    res.status(500).json({ error: '服务器内部错误，请稍后重试' });
   }
 });
 

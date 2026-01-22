@@ -14,7 +14,7 @@ router.get('/', authMiddleware, async (req, res) => {
 
     const {
       page = 1,
-      limit: rawLimit = 20,
+      limit: rawLimit = 3000,
       user_id,
       action,
       module,
@@ -23,7 +23,7 @@ router.get('/', authMiddleware, async (req, res) => {
       search,
     } = req.query;
 
-    const limit = parseInt(rawLimit) || 20;
+    const limit = parseInt(rawLimit) || 3000;
     const offset = (parseInt(page) - 1) * limit;
     let whereClause = '1=1';
     const params = [];
