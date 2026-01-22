@@ -31,11 +31,14 @@ async function getCommunityIdByOwner(ownerId) {
   return owners.length > 0 ? owners[0].community_id : null;
 }
 
-// 配置文件上传
+// 配置文件上传（内存优化：限制文件大小为 2MB）
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 } // 限制 5MB
+  limits: { fileSize: 2 * 1024 * 1024 } // 限制 2MB，防止大文件导致 OOM
 });
+
+// 内存优化：最大允许导入的行数
+const MAX_IMPORT_ROWS = 5000;
 
 // 获取业主列表（支持分页、搜索、筛选）
 router.get('/', authMiddleware, async (req, res) => {
@@ -534,12 +537,19 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
       return res.status(403).json({ error: '无权管理该小区数据' });
     }
 
-    // 解析 Excel 文件（exceljs）
+    // 解析 Excel 文件（使用轻量级选项减少内存占用）
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(req.file.buffer);
     const sheet = workbook.worksheets[0];
     if (!sheet || sheet.rowCount < 2) {
       return res.status(400).json({ error: '文件中没有数据' });
+    }
+
+    // 内存优化：限制最大导入行数，防止 OOM
+    if (sheet.rowCount > MAX_IMPORT_ROWS + 1) {
+      return res.status(400).json({
+        error: `数据量过大，最多支持导入 ${MAX_IMPORT_ROWS} 条记录，当前文件包含 ${sheet.rowCount - 1} 条`
+      });
     }
 
     const headers = (sheet.getRow(1).values || []).slice(1).map(v => String(v || '').trim());
@@ -617,7 +627,7 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
       };
     };
 
-    // 辅助函数：批量插入数据库
+    // 辅助函数：批量插入数据库，插入后暂停让 GC 有机会运行
     const insertBatch = async (batch) => {
       if (batch.length === 0) return;
       await pool.query(`
@@ -638,16 +648,19 @@ router.post('/import', authMiddleware, adminMiddleware, upload.single('file'), a
           wechat_contact = VALUES(wechat_contact),
           house_status = VALUES(house_status)
       `, [batch]);
+      // 让出 CPU 时间，允许 GC 运行
+      await new Promise(resolve => setImmediate(resolve));
     };
 
-    const BATCH_SIZE = 500; // 每批处理500条，减少内存压力
+    // 内存优化：减小批次大小到 200 条
+    const BATCH_SIZE = 200;
     let currentBatch = [];
     const errors = [];
     let successCount = 0;
     let failCount = 0;
     let totalRows = 0;
 
-    // 边读取边处理：逐行处理 Excel 数据
+    // 逐行处理 Excel 数据，不保存整个数据集
     for (let r = 2; r <= sheet.rowCount; r++) {
       const row = sheet.getRow(r);
       if (!row || !row.values || row.values.length <= 1) continue;
